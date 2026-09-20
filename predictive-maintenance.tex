@@ -70,7 +70,7 @@ The monitoring station is built around a single low-cost microcontroller that re
 
 \subsection{Vibration Sensing}
 
-A MEMS accelerometer is fixed to the shell of the rotating component and reports acceleration along three axes. The firmware computes the RMS of each window and a discrete Fourier transform, the same pair of characteristics that Kolok et al. applied to small rotating machines, and Yousuf et al. combine with electrical measurements on induction motors \cite{kolok2025lowcost,yousuf2024iot}. Mechanical coupling decides whether the reading means anything: a sensor that is not rigidly attached measures its own movement rather than the machine, so the accelerometer sits on a flat and rigid part of the casing, held by a magnetic base or structural adhesive.
+A MEMS accelerometer is fixed to the shell of the rotating component and reports acceleration along three axes. The firmware computes the RMS of each window and a discrete Fourier transform, the same pair of characteristics that Kolok et al. applied to small rotating machines, and Yousuf et al. combine with electrical measurements on induction motors \cite{kolok2025lowcost,yousuf2024iot}. Mechanical coupling decides whether the reading means anything: a sensor that is not rigidly attached measures its own movement rather than the machine, so the accelerometer sits on a flat and rigid part of the casing. On the bench it is bonded to the fan frame rather than to the base, so that a loosened mounting raises the measured vibration instead of decoupling the sensor from it; on an air conditioner it is held to the compressor shell by a magnetic base or structural adhesive.
 
 \subsection{Electrical Current Sensing}
 
@@ -90,9 +90,9 @@ The microcontroller acquires the three quantities, computes the window features,
 
 \subsection{Experimental Configuration}
 
-The first experiments run on a bench built around a 12~V fan driven by the same microcontroller, with the accelerometer on the motor body, the shunt monitor in series with the supply, and one probe on the motor and another measuring ambient air, so that heating is read as a rise above the room rather than as an absolute value.
+The first experiments run on a bench built around a 12~V fan supplied at a fixed voltage, with the accelerometer bonded to the fan frame, the shunt monitor in series with the supply, and one probe in the air leaving the fan and another measuring ambient air, so that heating is read as a rise above the room rather than as an absolute value. The fan exposes a tachometer output, which adds rotational speed as a fourth quantity at no extra cost.
 
-Four conditions are induced in a controlled and repeatable way: a mass attached to one blade for imbalance, added friction on the shaft, a blocked air path for obstruction, and a loosened mounting screw. Each condition produces a different combination across the three quantities, which is what allows an alert to name the mechanism instead of only reporting that something changed.
+Four conditions are induced in a controlled and repeatable way: a mass attached to one blade for imbalance, a pad advanced against the rotating hub for friction, a blocked air path for obstruction, and a loosened mounting screw. Each condition produces a different combination across the three quantities, which is what allows an alert to name the mechanism instead of only reporting that something changed.
 
 Each condition is recorded in independent runs rather than sliced from a single acquisition. Gupta et al. report that ignoring this separation inflates the measured performance, and Meitz et al. treat evaluation as a stage of its own rather than an afterthought \cite{gupta2023baggage,meitz2025pdmframework}. The healthy baseline is built from runs that are never reused for evaluation.
 
