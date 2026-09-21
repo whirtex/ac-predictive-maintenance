@@ -84,13 +84,15 @@ A single temperature reading describes the room rather than the machine. The qua
 
 On the equipment, the probes are clamped to the liquid line and to the suction line of the refrigerant circuit. Tormos et al. map the available measurements onto the vapour-compression cycle precisely to obtain features with physical meaning, and Es-Sakali et al. review how HVAC health assessment rests on this kind of thermal evidence \cite{tormos2026hvacxai,essakali2022hvac}. Two further probes at the return and supply air of the indoor unit measure cooling capacity, and they have the practical advantage of requiring no access to the electrical enclosure.
 
+The bench has no refrigerant circuit, so the probe is bonded to the motor and read against room air, the same quantity Yousuf et al. and Mohammed et al. record on electrical motors \cite{yousuf2024iot,mohammed2023iot}. The probes on the liquid and suction lines measure something else, so the two are reported separately.
+
 \subsection{Processing and Communication}
 
 The microcontroller acquires the three quantities, computes the window features, and publishes the result through MQTT, a lightweight publish and subscribe protocol for low-bandwidth and intermittent links. Mohammed et al. adopt the same arrangement, with an embedded acquisition unit transmitting vibration, current, and temperature to a remote server, and Gubbi et al. describe the wider architecture in which such devices deliver data to analytical services \cite{mohammed2023iot,gubbi2013iot}. The remote side compares each window against the healthy baseline and reports which measurement produced the alert.
 
 \subsection{Experimental Configuration}
 
-The first experiments run on a bench built around a 12~V fan supplied at a fixed voltage, with the accelerometer bonded to the fan frame, the shunt monitor in series with the supply, and one probe in the air leaving the fan and another measuring ambient air, so that heating is read as a rise above the room rather than as an absolute value. The fan exposes a tachometer output, which adds rotational speed as a fourth quantity at no extra cost.
+The first experiments run on a bench built around a 12~V fan supplied at a fixed voltage, with the accelerometer bonded to the fan frame, the shunt monitor in series with the supply, and one probe bonded to the stationary motor hub and another measuring ambient air, so that heating is read as a rise above the room rather than as an absolute value. The fan exposes a tachometer output, which adds rotational speed as a fourth quantity at no extra cost.
 
 Four conditions are induced in a controlled and repeatable way: a mass attached to one blade for imbalance, a pad advanced against the rotating hub for friction, a blocked air path for obstruction, and a loosened mounting screw. Each condition produces a different combination across the three quantities, which is what allows an alert to name the mechanism instead of only reporting that something changed.
 
