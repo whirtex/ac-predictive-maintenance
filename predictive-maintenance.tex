@@ -66,7 +66,7 @@ The rest of this work is organized as follows. Section~\ref{sec:system-descripti
 \section{System Description}
 \label{sec:system-description}
 
-The monitoring station is built around a single low-cost microcontroller that reads the sensors at the equipment, computes features locally, and sends the result onward. Kolok et al. showed that a board of this class can extract time- and frequency-domain characteristics and run a lightweight anomaly detector without a server, and Lin et al. describe why processing near the device reduces latency and keeps the service running when the link does not \cite{kolok2025lowcost,lin2017iot}. The prototype uses an ESP32 module with external PSRAM, which leaves room for the sample buffers that a frequency transform needs.
+The monitoring station is built around a single low-cost microcontroller that reads the sensors at the equipment, computes features locally, and sends the result onward. Kolok et al. showed that a board of this class can extract time- and frequency-domain characteristics and run a lightweight anomaly detector without a server, and Lin et al. describe why processing near the device reduces latency and keeps the service running when the link does not \cite{kolok2025lowcost,lin2017iot}. The prototype uses an ESP32 module, which combines integrated Wi-Fi with enough memory to compute the RMS and the frequency transform on the board itself, so neither an external radio nor a server is required for the processing.
 
 \subsection{Vibration Sensing}
 
