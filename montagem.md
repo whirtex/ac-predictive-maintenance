@@ -82,8 +82,28 @@ valores parecidos enquanto os dois estão na mesma sala.
 
 ## Passo 5 — a vibração
 
-O ADXL345 divide o barramento com o INA219: `SDA` no 21, `SCL` no 22, os mesmos.
-Mais `VCC` nos 3,3 V e `GND` no GND.
+O ADXL345 tem 8 pinos, e os 6 que importam vão assim:
+
+| Pino do ADXL345 | Vai para |
+|---|---|
+| `SDA` | direto no GPIO **21** do ESP32 (sem passar pela protoboard) |
+| `SCL` | direto no GPIO **22** do ESP32 (sem passar pela protoboard) |
+| `VCC` | fileira do `+` da protoboard |
+| `CS` | mesma fileira do `+`, junto com o `VCC` — liga o modo I2C |
+| `GND` | fileira do `−` da protoboard |
+| `SDO` | mesma fileira do `−`, junto com o `GND` — fixa o endereço em `0x53` |
+
+`INT1` e `INT2` ficam sem ligar.
+
+**A armadilha que mais custou tempo na bancada:** as fileiras `+`/`−` da
+protoboard são isoladas do resto. Elas só viram 3,3 V e GND de verdade se
+existir um jumper explícito do pino `3V3` do ESP32 até a fileira `+`, e do
+`GND` do ESP32 até a fileira `−`. Sem esses dois jumpers, o sensor fica sem
+alimentação nenhuma, e nenhum scanner acha `0x53` — sem dar nenhuma pista de
+que o problema é esse.
+
+O ADXL345 divide o barramento com o INA219: mesmos `SDA` e `SCL`, e mesma
+fileira `+` para o `VCC`.
 
 **Confirma quando:** o scanner acha `0x40` e `0x53` juntos.
 
