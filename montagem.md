@@ -70,8 +70,8 @@ O ADXL345 tem 8 pinos, e os 6 que importam vão assim:
 
 | Pino do ADXL345 | Vai para |
 |---|---|
-| `SDA` | direto no GPIO **21** do ESP32 (sem passar pela protoboard) |
-| `SCL` | direto no GPIO **22** do ESP32 (sem passar pela protoboard) |
+| `SDA` | linha de SDA da protoboard, que vai ao GPIO **21** do ESP32 |
+| `SCL` | linha de SCL da protoboard, que vai ao GPIO **22** do ESP32 |
 | `VCC` | fileira do `+` da protoboard |
 | `CS` | mesma fileira do `+`, junto com o `VCC` — liga o modo I2C |
 | `GND` | fileira do `−` da protoboard |
@@ -86,8 +86,14 @@ existir um jumper explícito do pino `3V3` do ESP32 até a fileira `+`, e do
 alimentação nenhuma, e nenhum scanner acha `0x53` — sem dar nenhuma pista de
 que o problema é esse.
 
-O ADXL345 divide o barramento com o INA219: mesmos `SDA` e `SCL`, e mesma
-fileira `+` para o `VCC`.
+O ADXL345 divide o barramento com o INA219. Um pino do ESP32 só aceita um jumper,
+então os fios se encontram na protoboard. Os furos ligados por dentro são os de
+**mesmo número**, de `a` a `e` ou de `f` a `j`; furos na mesma letra e em números
+diferentes (30j e 31j) não se tocam. Num número livre ficam o `SDA` do ADXL345, o
+`SDA` do INA219 e um jumper até o GPIO 21, cada um numa letra; noutro número, o
+mesmo com os dois `SCL` e o GPIO 22. Se o ESP32 estiver espetado na protoboard, basta usar
+furos livres da coluna do pino 21 e da coluna do pino 22. O `VCC` dos dois vai na
+mesma fileira `+`.
 
 **Confirma quando:** o scanner acha `0x40` e `0x53` juntos.
 
@@ -118,25 +124,49 @@ entre uma repetição e outra.
 
 ## Gravação dos ensaios, depois de tudo montado
 
-Os dados de treino saem do `firmware/aquisicao_esp32/`, gravados no computador
-pelo `analysis/captura_serial.py`. O script ocupa a porta serial, então o monitor
-do Arduino IDE fica fechado durante a gravação.
+Grave o `firmware/aquisicao_esp32/` na placa e feche o monitor serial do Arduino
+IDE. O resto são cinco atalhos, rodados no Terminal dentro de
+`predictive-maintenance/`:
 
-1. Prepare o Python uma vez, dentro de `predictive-maintenance/`:
-   `python3 -m venv .venv`, depois `source .venv/bin/activate` e
-   `pip install -r analysis/requirements.txt`. Nas próximas vezes, basta o
-   `source .venv/bin/activate`.
-2. Grave o `aquisicao_esp32` na placa e feche o monitor serial.
-3. Rode `python analysis/captura_serial.py /dev/cu.usbserial-XXXX data/ensaio.csv`.
-4. A placa reinicia quando o script abre a porta, e os rótulos voltam para
-   `normal` e repetição 1. Digite no terminal a condição e a repetição de
-   verdade: `c normal` e `r 1`.
-5. A cada troca de condição, digite a nova: `c obstrucao`, `c desbalanceamento`,
-   `c atrito`. Sem isso os dados não servem para nada.
+```
+./gravar        grava uma sessão e abre o gráfico da vibração e da corrente
+./treinar       treina o modelo com as três sessões
+./apresentar    painel com o modelo treinado, para a apresentação
+./demonstrar    painel sem o modelo: aprende o padrão em 30 s e avisa as anomalias
+./grafico       só o gráfico ao vivo: vibração e corrente, sem gravar nem comparar
+```
 
-Condições: normal, obstrução, desbalanceamento e, se o mecanismo ficar pronto,
-atrito. Dez minutos cada, descartando os três primeiros. Três repetições por
-condição, desfazendo e refazendo a falha a cada repetição.
+Na primeira vez, prepare o Python: `python3 -m venv .venv` e depois
+`.venv/bin/pip install -r analysis/requirements.txt`.
 
-Depois de gravar: `python analysis/treino.py data/*.csv`. As repetições 1 e 2
-treinam, a 3 avalia.
+**Para a AP1, grave só a operação normal, em três sessões.** Em cada uma:
+
+1. Ligue o ventilador.
+2. Rode `./gravar` e responda o número da sessão: 1, 2 ou 3.
+3. Deixe gravar. O gráfico abre sozinho, e o terminal mostra o tempo e avisa quando
+   der 10 minutos.
+4. Aperte `Ctrl+C`. O gráfico fecha junto.
+5. Desligue o ventilador por 1 minuto antes da sessão seguinte.
+
+Não mexa na montagem entre as sessões. Para um teste que não entra no treino,
+responda só Enter no lugar do número: o arquivo vira `data/teste-HHMMSS.csv`. O
+`./gravar` não grava por cima de uma sessão que já existe; para refazer uma,
+apague o `data/repN.csv` dela antes.
+
+Depois das três: `./treinar`. As sessões 1 e 2 treinam, e a 3 mede o alarme
+falso. Os primeiros 5 minutos de cada sessão são descartados, porque o ventilador
+ainda está aquecendo. Figuras, relatório e modelo vão para `results/`.
+
+Na apresentação, rode `./apresentar`. Se o modelo foi treinado só com o
+ventilador aquecido, ligue o ventilador uns 5 minutos antes. Se a placa falhar,
+`./apresentar reserva` toca a sessão 3 gravada.
+
+`./demonstrar` é a alternativa sem o modelo: aprende o padrão nos primeiros 30
+segundos, com o ventilador ligado e sem tocar, e depois avisa cada pico ou vibração
+anormal. Serve para quando não der para esperar o ventilador aquecer. Com o
+`aquisicao_esp32`, o gráfico atualiza a cada 1,3 s: tapar a entrada aparece bem, e
+balançar o ventilador por 2 ou 3 segundos aparece melhor que um toque rápido.
+`Ctrl+C` no terminal, ou fechar a janela, encerra o painel.
+
+Gravar as falhas (obstrução e desbalanceamento) e medir o F1 ficou para depois da
+AP1.
