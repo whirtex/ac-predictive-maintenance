@@ -29,7 +29,7 @@
   repeticao e o que separa treino de teste.
 
   Linhas que comecam com # sao comentario e alarme: o pandas ignora
-  com comment='#'. O script analise/captura_serial.py grava tudo num
+  com comment='#'. O script analysis/captura_serial.py grava tudo num
   arquivo.
 
   Precisa da biblioteca Adafruit INA219.

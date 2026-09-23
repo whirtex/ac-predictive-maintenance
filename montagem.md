@@ -119,15 +119,15 @@ entre uma repetição e outra.
 ## Gravação dos ensaios, depois de tudo montado
 
 Os dados de treino saem do `firmware/aquisicao_esp32/`, gravados no computador
-pelo `analise/captura_serial.py`. O script ocupa a porta serial, então o monitor
+pelo `analysis/captura_serial.py`. O script ocupa a porta serial, então o monitor
 do Arduino IDE fica fechado durante a gravação.
 
 1. Prepare o Python uma vez, dentro de `predictive-maintenance/`:
    `python3 -m venv .venv`, depois `source .venv/bin/activate` e
-   `pip install -r analise/requirements.txt`. Nas próximas vezes, basta o
+   `pip install -r analysis/requirements.txt`. Nas próximas vezes, basta o
    `source .venv/bin/activate`.
 2. Grave o `aquisicao_esp32` na placa e feche o monitor serial.
-3. Rode `python analise/captura_serial.py /dev/cu.usbserial-XXXX dados/ensaio.csv`.
+3. Rode `python analysis/captura_serial.py /dev/cu.usbserial-XXXX data/ensaio.csv`.
 4. A placa reinicia quando o script abre a porta, e os rótulos voltam para
    `normal` e repetição 1. Digite no terminal a condição e a repetição de
    verdade: `c normal` e `r 1`.
@@ -138,5 +138,5 @@ Condições: normal, obstrução, desbalanceamento e, se o mecanismo ficar pront
 atrito. Dez minutos cada, descartando os três primeiros. Três repetições por
 condição, desfazendo e refazendo a falha a cada repetição.
 
-Depois de gravar: `python analise/treino.py dados/*.csv`. As repetições 1 e 2
+Depois de gravar: `python analysis/treino.py data/*.csv`. As repetições 1 e 2
 treinam, a 3 avalia.
