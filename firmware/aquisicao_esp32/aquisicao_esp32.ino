@@ -152,6 +152,12 @@ bool inaResponde() {
   return Wire.endTransmission() == 0;
 }
 
+bool iniciarIna() {
+  if (!inaResponde() || !ina219.begin()) return false;
+  ina219.setCalibration_16V_400mA();
+  return true;
+}
+
 // --- Wi-Fi e hora ----------------------------------------------------
 
 void conectarWiFi() {
@@ -388,9 +394,8 @@ void setup() {
 
   conectarWiFi();
 
-  inaOk = inaResponde() && ina219.begin();
-  if (inaOk) ina219.setCalibration_16V_400mA();
-  else Serial.println("# INA219 ausente: a coluna de corrente sai vazia");
+  inaOk = iniciarIna();
+  if (!inaOk) Serial.println("# INA219 ausente: a coluna de corrente sai vazia");
 
   Serial.println("data_hora,unidade,condicao,repeticao,taxa_hz,"
                  "x_rms,x_pico,x_curtose,x_fdom,x_adom,"
@@ -461,6 +466,17 @@ void loop() {
         inaOk = false;
         Serial.println("# ALARME: INA219 parou de responder");
       }
+    }
+  }
+
+  // Sem o INA219, tenta de novo a cada 2 s, e a coleta de vibracao
+  // segue enquanto isso.
+  static unsigned long ultimaTentativaIna = 0;
+  if (!inaOk && millis() - ultimaTentativaIna >= 2000) {
+    ultimaTentativaIna = millis();
+    if (iniciarIna()) {
+      inaOk = true;
+      Serial.println("# INA219 respondendo");
     }
   }
 
