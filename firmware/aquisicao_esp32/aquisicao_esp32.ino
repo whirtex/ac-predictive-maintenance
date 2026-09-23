@@ -92,8 +92,21 @@ const unsigned long INTERVALO_INA_MS = 20;
 Adafruit_INA219 ina219;
 
 volatile unsigned long pulsos = 0;
+volatile unsigned long ultimoPulsoUs = 0;
+
+// Pulsos mais proximos que isso sao ruido do motor, nao voltas (4 ms
+// aceita ate 7500 RPM). Sem filtro, a bancada contou de 15 a 20 mil
+// RPM; com ele, ~3800 RPM, contra ~2780 RPM que a frequencia dominante
+// da vibracao mostra. A leitura ainda conta a mais e nao e usada pelo
+// modelo: a rotacao confiavel vem de x_fdom x 60. Contar so quedas de
+// pelo menos 1 ms foi testado e zerou a leitura, entao o formato real
+// do pulso precisa ser visto num osciloscopio antes do proximo ajuste.
+const unsigned long INTERVALO_MINIMO_US = 4000;
 
 void IRAM_ATTR contarPulso() {
+  unsigned long agora = micros();
+  if (agora - ultimoPulsoUs < INTERVALO_MINIMO_US) return;
+  ultimoPulsoUs = agora;
   pulsos++;
 }
 
