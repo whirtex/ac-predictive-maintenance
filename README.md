@@ -1,12 +1,16 @@
-# Manutenção preditiva de ar-condicionado por vibração
+# Manutenção preditiva de equipamentos de ar-condicionado
 
 Protótipo da disciplina IBM3119, Projeto de Sistemas Embarcados (Ibmec, 2026).
 
-Um ESP32 lê a vibração de um ventilador de 12 V com um acelerômetro, calcula as
-características de cada janela na própria placa e manda o resultado para o
-computador. Lá, um modelo treinado só com a operação normal decide se cada janela
-é normal ou anômala, e aponta qual característica de vibração mais se afastou do
-normal.
+Um ESP32 monitora um ventilador de 12 V medindo três grandezas: vibração, com um
+acelerômetro; corrente elétrica, com um INA219; e rotação, pelo tacômetro do
+próprio ventilador. A placa calcula as características de cada janela e manda o
+resultado para o computador. Lá, um modelo treinado só com a operação normal
+decide se cada janela é normal ou anômala, e aponta qual característica mais se
+afastou do normal.
+
+A vibração é o sinal principal e a entrada do modelo, por orientação do
+professor. Corrente e rotação são gravadas junto e usadas na análise como apoio.
 
 O ventilador é da mesma classe do ventilador da unidade condensadora de um
 ar-condicionado. Os resultados caracterizam o método em bancada; não validam o
