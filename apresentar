@@ -1,0 +1,8 @@
+#!/bin/sh
+# Painel da apresentacao, com o modelo treinado e a placa ao vivo.
+# ./apresentar reserva  toca a sessao 3 gravada, se a placa falhar.
+cd "$(dirname "$0")" || exit 1
+if [ "$1" = "reserva" ]; then
+    exec .venv/bin/python analysis/painel.py --reproduzir data/rep3.csv --modelo
+fi
+exec .venv/bin/python analysis/painel.py auto --modelo
