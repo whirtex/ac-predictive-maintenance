@@ -76,6 +76,7 @@ externa: Adafruit INA219 1.2.3. O ADXL345 não usa biblioteca.
 | `captura_serial.py` | Grava a saída da placa num CSV e repassa os comandos de rótulo |
 | `treino.py` | Treina, avalia e gera figuras, relatório e o modelo salvo |
 | `ao_vivo.py` | Detecção ao vivo com o modelo salvo |
+| `painel.py` | Painel ao vivo para a demonstração: linha padrão, limite e avisos de pico ou anomalia contínua |
 
 ### O que a placa calcula
 
@@ -132,7 +133,16 @@ python analise/treino.py dados/*.csv --ingles   # figuras em inglês, para o art
 Tudo vai para `resultados/`: `relatorio.txt`, `vibracao_no_tempo.png`,
 `comparacao_metodos.png`, `confusao.png` e `modelo.joblib`.
 
-Demonstração ao vivo, com o modelo já treinado:
+Painel da demonstração, com a `demo_vibracao` na placa. Ele aprende a linha padrão
+nos primeiros 15 s, com o cooler ligado e sem ninguém tocar, e depois avisa cada
+pico ou vibração anormal contínua. A tecla `r` reaprende a linha padrão:
+
+```
+python analise/painel.py /dev/cu.usbserial-XXXX
+python analise/painel.py --simular   # ensaio sem a placa
+```
+
+Detecção pelo modelo treinado, com o `aquisicao_esp32` na placa:
 
 ```
 python analise/ao_vivo.py /dev/cu.usbserial-XXXX
