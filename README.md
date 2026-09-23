@@ -1,31 +1,37 @@
-# Manutenção preditiva de equipamentos de ar-condicionado
+# Monitoramento de vibração para manutenção preditiva
 
 Protótipo da disciplina IBM3119, Projeto de Sistemas Embarcados (Ibmec, 2026).
 
-Um ESP32 monitora um ventilador de 12 V medindo três grandezas: vibração, com um
-acelerômetro; corrente elétrica, com um INA219; e rotação, pelo tacômetro do
-próprio ventilador. A placa calcula as características de cada janela e manda o
-resultado para o computador. Lá, um modelo treinado só com a operação normal
-decide se cada janela é normal ou anômala, e aponta qual característica mais se
-afastou do normal.
+O protótipo usa um ESP32 para medir a vibração de um ventilador de 12 V com um
+acelerômetro ADXL345. Um INA219 mede a corrente e o firmware também prevê a leitura
+da rotação pelo tacômetro do ventilador. A placa extrai características de cada
+janela e envia linhas CSV pela porta USB ao computador. O script de análise compara
+as características de vibração com uma referência aprendida na operação normal e
+mostra qual delas mais se afastou dessa referência.
 
-A vibração é o sinal principal e a entrada do modelo, por orientação do
-professor. Corrente e rotação são gravadas junto e usadas na análise como apoio.
+A vibração é o sinal principal e a entrada padrão do modelo, por orientação do
+professor. Corrente e rotação ocupam colunas de apoio no CSV quando os respectivos
+sensores estão conectados.
 
-O ventilador é da mesma classe do ventilador da unidade condensadora de um
-ar-condicionado. Os resultados caracterizam o método em bancada; não validam o
-sistema num aparelho real.
+O ventilador serve como bancada para estudar componentes rotativos. Os ensaios
+nesse ventilador não validam o sistema em um aparelho de ar-condicionado ou em um
+compressor.
 
 ## O que funciona hoje
 
 | Parte | Situação |
 |---|---|
-| Leitura da vibração (ADXL345) | Funcionando e validada na bancada |
-| Leitura da corrente (INA219) | Funcionando |
-| Leitura da rotação (tacômetro do ventilador) | Firmware pronto, ainda não testado na bancada |
-| Firmware de coleta com características na placa | Compila; conta da FFT conferida com sinais sintéticos |
-| Gravação, treino e detecção ao vivo | Scripts prontos, testados com dados sintéticos |
-| Ensaios com falhas induzidas | Obstrução medida (6,2 desvios acima do ruído); falta gravar o conjunto completo |
+| Leitura da vibração (ADXL345) | Leitura demonstrada na bancada; a continuidade das amostras ainda precisa ser validada |
+| Leitura da corrente (INA219) | Leitura demonstrada na bancada |
+| Leitura da rotação (tacômetro) | Código disponível; falta confirmação na bancada final |
+| Extração de características no ESP32 | Código disponível; a FFT foi conferida com sinais sintéticos |
+| Captura, treino, figuras e detecção ao vivo | Scripts disponíveis; a cadeia completa ainda não foi avaliada com ensaios independentes |
+| Falhas induzidas | Há uma medição preliminar de obstrução; falta publicar as rodadas completas e avaliar os modelos |
+
+Até agora, este repositório não contém um conjunto de dados experimentais nem
+métricas de detecção obtidas com as rodadas independentes. O valor preliminar da
+obstrução está registrado em [`duvidas-professor.md`](duvidas-professor.md) e não
+equivale a uma medida de desempenho do classificador.
 
 ## Hardware
 
@@ -58,11 +64,15 @@ cada etapa, está em [`montagem.md`](montagem.md).
 ## Software
 
 Placa: ESP32 Wrover Module, core `esp32` 3.3.11, Arduino IDE 2.3.10. Biblioteca
-externa: Adafruit INA219 1.2.3. O ADXL345 não usa biblioteca.
+externa: Adafruit INA219 1.2.3. O ADXL345 é lido diretamente por I²C. O sketch
+`aquisicao_esp32` exige um arquivo local `credenciais.h`; copie
+[`credenciais.h.exemplo`](firmware/aquisicao_esp32/credenciais.h.exemplo), preencha
+a rede e a senha e mantenha `credenciais.h` fora do Git. O Wi-Fi é usado para
+sincronizar o relógio por NTP; sem conexão, o CSV usa horários `boot+...`.
 
 | Firmware (`firmware/`) | Para que serve |
 |---|---|
-| `aquisicao_esp32` | Coleta dos dados de treino: uma linha CSV por janela, com rótulo |
+| `aquisicao_esp32` | Extrai características e emite uma linha CSV por janela pela porta serial |
 | `demo_vibracao` | Gráfico ao vivo da vibração no Serial Plotter, para demonstração |
 | `teste_obstrucao_vibracao` | Compara a vibração com a entrada de ar livre e tapada |
 | `teste_obstrucao` | A mesma comparação, na corrente |
@@ -76,33 +86,44 @@ externa: Adafruit INA219 1.2.3. O ADXL345 não usa biblioteca.
 | `captura_serial.py` | Grava a saída da placa num CSV e repassa os comandos de rótulo |
 | `treino.py` | Treina, avalia e gera figuras, relatório e o modelo salvo |
 | `ao_vivo.py` | Detecção ao vivo com o modelo salvo |
-| `painel.py` | Painel ao vivo para a demonstração: linha padrão, limite e avisos de pico ou anomalia contínua |
+| `painel.py` | Painel da demonstração: gráfico ao vivo com a linha padrão e avisos, pelo modelo treinado ou por limite simples |
+| `formato.py` | Colunas do CSV da placa, usadas pelos outros scripts |
 
 ### O que a placa calcula
 
-A cada janela de 512 amostras a 400 Hz (cerca de 1,3 s), para cada eixo: RMS,
-pico, curtose, frequência dominante e amplitude dessa frequência. A média da janela
-sai antes das contas, porque é a gravidade. A FFT usa janela de Hann. Corrente e
-rotação saem como colunas extras.
+O firmware configura o ADXL345 para 400 Hz e forma janelas de 512 amostras. Para
+cada eixo calcula RMS, pico, curtose, frequência dominante e amplitude dessa
+frequência. Remove a média da janela antes da FFT e aplica uma janela de Hann.
+Corrente e rotação saem como colunas adicionais.
+
+**Validação pendente da aquisição:** o I²C está configurado para 100 kHz, velocidade
+para a qual o [datasheet do ADXL345](https://www.analog.com/media/en/technical-documentation/data-sheets/ADXL345.pdf)
+recomenda uma taxa de saída de até 200 Hz. O FIFO em modo stream guarda 32 amostras;
+o firmware ainda não mede perdas ou estouros durante o cálculo da FFT e a emissão
+serial. A taxa incluída no CSV é estimada pela duração da janela e não comprova que
+as 512 amostras sejam consecutivas. As características espectrais precisam dessa
+verificação antes de fundamentar resultados quantitativos.
 
 ## Modelo
 
 - **Detecção de anomalia:** Isolation Forest treinado só com janelas normais,
-  sobre as 15 características de vibração. O limiar aceita 1% de falso alarme nas
-  janelas normais de treino.
+  sobre as 15 características de vibração. O limiar é definido pelo percentil 1
+  dos escores de treino; isso não garante 1% de falsos alarmes em novos ensaios.
 - **Método de comparação:** limite fixo no RMS total, igual à média mais 3
   desvios do normal de treino.
-- **Qual medição desviou:** em cada alerta, a característica mais distante do
-  normal, medida em desvios.
+- **Característica destacada no alerta:** a mais distante da média normal, medida
+  em desvios padrão. Esse indicador não identifica a causa física da falha nem
+  explica a contribuição de cada variável para a decisão do Isolation Forest.
 - **Resultado adicional:** Random Forest classificando as condições, com matriz de
   confusão.
-- **Treino e teste:** separados por repetição. As repetições 1 e 2 treinam, a 3
-  avalia. Cada repetição desfaz e refaz a falha, então nenhuma janela de teste vem
-  da mesma montagem de uma janela de treino.
+- **Treino e teste:** separados por repetição. Por padrão, as repetições 1 e 2
+  treinam, e a 3 avalia. A condição de falha é desfeita e refeita entre rodadas;
+  o ventilador e a fixação do acelerômetro continuam os mesmos.
 - **Métricas:** precisão, recall e F1 na detecção; F1 por classe na classificação.
 
-As condições induzidas são obstrução (entrada de ar tapada), desbalanceamento
-(massa presa numa pá) e, se o mecanismo ficar pronto, atrito.
+O protocolo prevê obstrução (entrada de ar tapada), desbalanceamento (massa presa
+numa pá) e, caso o mecanismo seja montado, atrito. O script descarta por padrão os
+primeiros 180 s de cada trecho contínuo de condição e repetição.
 
 ## Como usar
 
@@ -114,14 +135,25 @@ source .venv/bin/activate
 pip install -r analise/requirements.txt
 ```
 
+Antes de gravar `aquisicao_esp32` pela Arduino IDE, crie as credenciais locais:
+
+```sh
+cp firmware/aquisicao_esp32/credenciais.h.exemplo firmware/aquisicao_esp32/credenciais.h
+```
+
+Edite o novo arquivo com a rede Wi-Fi do laboratório. A porta serial deve ser
+substituída pela porta real do ESP32 nos comandos abaixo.
+
 Gravar os ensaios, com o `aquisicao_esp32` na placa e o monitor serial fechado:
 
 ```
 python analise/captura_serial.py /dev/cu.usbserial-XXXX dados/rep1.csv
 ```
 
-No mesmo terminal, digite `r 1` e depois `c normal`, `c obstrucao`,
-`c desbalanceamento` a cada troca de condição. O roteiro está em `montagem.md`.
+No mesmo terminal, informe `u A`, `r 1` e `c normal`. Atualize `c` quando a
+condição mudar e `r` antes de cada repetição. Faça rodadas independentes para a
+repetição 3; mantenha uma identificação clara dos arquivos e das condições. O
+roteiro físico está em [`montagem.md`](montagem.md).
 
 Treinar e gerar as figuras:
 
@@ -130,19 +162,33 @@ python analise/treino.py dados/*.csv            # figuras em português
 python analise/treino.py dados/*.csv --ingles   # figuras em inglês, para o artigo
 ```
 
-Tudo vai para `resultados/`: `relatorio.txt`, `vibracao_no_tempo.png`,
-`comparacao_metodos.png`, `confusao.png` e `modelo.joblib`.
+Os resultados são gravados em `resultados/`: `relatorio.txt`,
+`vibracao_no_tempo.png`, `comparacao_metodos.png` e `modelo.joblib`. O arquivo
+`confusao.png` só é criado quando há dados de pelo menos duas condições nas
+repetições de treino. Confira no relatório quantas janelas restaram após o
+descarte inicial de cada trecho.
 
-Painel da demonstração, com a `demo_vibracao` na placa. Ele aprende a linha padrão
-nos primeiros 15 s, com o cooler ligado e sem ninguém tocar, e depois avisa cada
-pico ou vibração anormal contínua. A tecla `r` reaprende a linha padrão:
+Painel da demonstração. Mostra a vibração ao vivo, a linha padrão, e avisa cada
+pico ou vibração anormal contínua, dizendo o que desviou. Tem dois modos:
 
 ```
+# modo modelo: usa o modelo treinado; aquisicao_esp32 na placa
+python analise/painel.py /dev/cu.usbserial-XXXX --modelo
+
+# modo limite: aprende a linha padrão em 15 s, sem modelo; demo_vibracao na placa
 python analise/painel.py /dev/cu.usbserial-XXXX
-python analise/painel.py --simular   # ensaio sem a placa
+
+# toca uma gravação no ritmo real, para ensaiar ou se a placa falhar
+python analise/painel.py --reproduzir dados/rep3.csv --modelo
+
+# dados falsos no modo limite, para testar sem a placa
+python analise/painel.py --simular
 ```
 
-Detecção pelo modelo treinado, com o `aquisicao_esp32` na placa:
+No modo modelo, o gráfico de baixo é o grau de anomalia calculado pelo Isolation
+Forest, com o limite dele: é exatamente o que o modelo usa para decidir.
+
+A detecção pelo modelo também existe só em texto, no terminal:
 
 ```
 python analise/ao_vivo.py /dev/cu.usbserial-XXXX
@@ -152,21 +198,21 @@ python analise/ao_vivo.py /dev/cu.usbserial-XXXX
 
 O que foi desenvolvido além do uso padrão das bibliotecas e da IDE:
 
-- **Driver próprio do ADXL345.** A leitura fala direto com os registradores, com
-  a fila interna do sensor em modo stream. Assim a taxa de 400 Hz fica sob
-  controle, e nenhuma amostra se perde entre duas consultas.
+- **Leitura direta do ADXL345.** O firmware configura registradores e usa o FIFO
+  em modo stream. A continuidade das amostras ainda precisa ser medida.
 - **FFT na placa.** Implementação própria da FFT radix-2, com janela de Hann e
   correção do ganho da janela, para que a amplitude saia em g. A conta foi
   conferida com senos de amplitude e frequência conhecidas.
-- **Taxa medida, não assumida.** A frequência de cada janela é convertida com a
-  taxa real do sensor naquela janela, porque o ADXL345 tem tolerância na taxa.
+- **Taxa estimada por janela.** A conversão de frequência usa a duração medida
+  pelo ESP32. Essa estimativa não substitui a checagem de amostras perdidas.
 - **Rotulagem durante o ensaio.** Comandos pela serial (`c`, `r`, `u`) gravam em
   cada linha a condição e a repetição. É isso que permite separar treino e teste
   por repetição.
 - **Hora por NTP em vez de relógio externo.** O módulo DS1302 foi descartado
   depois de medido: contava seis vezes mais rápido que o tempo real.
-- **Alarme de falha de sensor.** Se o ADXL345 ou o INA219 param de responder, o
-  firmware avisa e tenta reconectar sozinho, sem travar a coleta.
+- **Avisos de falha de sensor.** O firmware avisa quando o ADXL345 ou o INA219
+  param de responder, tenta reiniciar o ADXL345 e tenta reconectar o INA219 a
+  cada dois segundos.
 - **Tacômetro por interrupção**, contando dois pulsos por volta.
 - **Corrente pela média da janela.** O motor sem escovas puxa corrente em pulsos,
   e uma leitura solta varia mais de 80 mA sem falha nenhuma.
@@ -177,8 +223,12 @@ O que foi desenvolvido além do uso padrão das bibliotecas e da IDE:
 - Os ensaios são em bancada, com falhas aplicadas por fora. Massa numa pá não é
   rolamento de compressor desgastado.
 - Há um único ventilador, então treino e teste vêm da mesma unidade.
-- O artigo descreve o envio por MQTT, que ainda não está implementado: por
-  enquanto os dados vão por USB para o computador.
+- A configuração atual de 400 Hz em I²C de 100 kHz e a ausência de contagem de
+  estouros do FIFO impedem afirmar que a série amostrada seja contínua.
+- O envio por MQTT e o armazenamento local planejados para operação sem USB ainda
+  não foram implementados. A coleta atual depende da porta serial e do computador.
+- Ainda faltam dados publicados de rodadas independentes para estimar precisão,
+  recall, F1 e taxa de falsos alarmes em operação nova.
 
 ## Documentos
 
