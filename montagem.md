@@ -12,7 +12,6 @@ Os pinos citados são os do `firmware/aquisicao_esp32/`.
 | ESP32 gravando pelo cabo USB | a IDE grava sem erro |
 | INA219 com barra de pinos e borneira soldadas | scanner mostra `0x40` |
 | ADXL345 com barra de pinos soldada | scanner mostra `0x53` |
-| Dois DS18B20 com as perninhas abertas em leque | os três conectores encaixam sem se tocar |
 
 Ferramentas: alicate de corte, chave de fenda pequena e fita.
 
@@ -65,22 +64,7 @@ O resistor vai nos **3,3 V**, nunca nos 12 V. Nos 12 V ele queima o ESP32.
 
 **Confirma quando:** o firmware mostra rotação por volta de 3000 no cooler de ensaio.
 
-## Passo 4 — a temperatura
-
-Os dois DS18B20 dividem tudo: os mesmos três fios e o mesmo pino.
-
-Monte três linhas na protoboard, uma de 3,3 V, uma de GND e uma de dados. Cada
-sensor tem três perninhas, e cada perninha vai na linha correspondente.
-
-Entre a linha de dados e a de 3,3 V, um resistor de **4,7 kΩ**. Um só, para os dois
-sensores. Se não tiver, um 10 kΩ funciona em fiação curta.
-
-Da linha de dados, um jumper até o **pino 5** do ESP32.
-
-**Confirma quando:** as duas colunas de temperatura saem preenchidas no CSV, com
-valores parecidos enquanto os dois estão na mesma sala.
-
-## Passo 5 — a vibração
+## Passo 4 — a vibração
 
 O ADXL345 tem 8 pinos, e os 6 que importam vão assim:
 
@@ -119,26 +103,37 @@ a placa e o cooler, a placa sobe em quatro palafitas e passa a balançar sozinha
 Prenda os fios com fita na tábua, a uns 3 cm do sensor, e sempre na mesma posição.
 Fio solto balança e o balanço entra na medição como se fosse vibração da máquina.
 
-## Passo 6 — montagem na tábua
+## Passo 5 — montagem na tábua
 
-Um furo na tábua embaixo do ventilador, para o ar entrar. O ventilador fica deitado
-soprando para cima, assentado direto na madeira.
+O ventilador fica **em pé**, colado na tábua com super cola. Aparafusar em pé se
+mostrou difícil demais, e por isso a falha de fixação frouxa saiu do projeto (ver
+`decisoes-do-projeto.md`).
 
-Quatro parafusos M4 × 50 mm atravessam o ventilador e a tábua, com porca por baixo.
-São de máquina, não auto-atarraxantes: eles são o mecanismo da falha de fixação
-frouxa, e vão ser apertados e afrouxados dezenas de vezes.
+Antes de colar, confira que a entrada e a saída de ar ficam livres. Se a borda
+apoiada na tábua tapar a hélice, a condição normal já nasce meio obstruída, e a
+obstrução é justamente uma das falhas medidas.
 
-O sensor de temperatura do motor cola no **centro fixo** do ventilador, aquele da
-etiqueta, de onde saem os fios. Um pedacinho de fita por cima dele, para o ar que
-passa não resfriar o sensor.
+Espere a cola curar antes do primeiro ensaio. A colagem é única: ela não é refeita
+entre uma repetição e outra.
 
-O segundo sensor de temperatura fica solto no ar da sala, longe do jato.
+## Gravação dos ensaios, depois de tudo montado
 
-## Ordem dos ensaios, depois de tudo montado
+Os dados de treino saem do `firmware/aquisicao_esp32/`, gravados no computador
+pelo `analise/captura_serial.py`. O script ocupa a porta serial, então o monitor
+do Arduino IDE fica fechado durante a gravação.
 
-Normal, desbalanceamento, fixação frouxa, obstrução e atrito. Dez minutos cada,
-descartando os três primeiros. Três repetições por condição, refazendo a falha a
-cada repetição.
+1. Instale uma vez: `pip install -r analise/requirements.txt`.
+2. Grave o `aquisicao_esp32` na placa e feche o monitor serial.
+3. Rode `python analise/captura_serial.py /dev/cu.usbserial-XXXX dados/ensaio.csv`.
+4. A placa reinicia quando o script abre a porta, e os rótulos voltam para
+   `normal` e repetição 1. Digite no terminal a condição e a repetição de
+   verdade: `c normal` e `r 1`.
+5. A cada troca de condição, digite a nova: `c obstrucao`, `c desbalanceamento`,
+   `c atrito`. Sem isso os dados não servem para nada.
 
-A cada troca, digite a condição no monitor serial: `c desbalanceamento`. Sem isso
-os dados não servem para classificar nada.
+Condições: normal, obstrução, desbalanceamento e, se o mecanismo ficar pronto,
+atrito. Dez minutos cada, descartando os três primeiros. Três repetições por
+condição, desfazendo e refazendo a falha a cada repetição.
+
+Depois de gravar: `python analise/treino.py dados/*.csv`. As repetições 1 e 2
+treinam, a 3 avalia.
