@@ -1,18 +1,18 @@
 /*
-  Cadeia de aquisicao na ESP32-WROVER-DEV.
-  Substitui a bancada do Arduino Mega: a hora vem da internet por NTP,
-  entao o modulo DS1302 sai do projeto. O DS1302 MH testado em 17 e 18
-  de setembro de 2026 contava exatamente seis vezes mais rapido que o
-  tempo real, e sem bateria voltava para a hora da compilacao a cada
-  religamento.
+  Cadeia de aquisicao na ESP32-WROVER-DEV, para gravar os dados de
+  treino do modelo.
 
-  Este sketch ja emite o CSV no formato final. Os sensores que ainda
-  nao chegaram saem como campo vazio, e cada um vai substituindo o
-  proprio campo conforme for montado, numa cadeia que ja roda.
+  A vibracao e o sinal principal do projeto. A cada janela de 512
+  amostras (cerca de 1,3 s a 400 Hz) a placa calcula, para cada eixo
+  do ADXL345, as caracteristicas no tempo e na frequencia, e emite
+  uma linha CSV. Corrente e rotacao entram como colunas de apoio: se
+  o INA219 ou o tacometro nao estiverem ligados, a coluna sai vazia
+  ou zerada e a gravacao continua.
 
-  Ligacao prevista:
-    DHT11 DADOS      -> GPIO 4    (provisorio, sai quando o DS18B20 chegar)
-    DS18B20 DADOS    -> GPIO 5    (1-Wire, com resistor de 4,7 kOhm para 3,3 V)
+  A temperatura saiu do projeto em 22 de setembro de 2026, por
+  orientacao do professor. O DHT11 provisorio saiu junto.
+
+  Ligacao (ver montagem.md, Passo 4, para a fiacao que funciona):
     ADXL345 e INA219 -> GPIO 21 SDA, GPIO 22 SCL
     Tacometro cooler -> GPIO 18   (com resistor de 10 kOhm para 3,3 V)
 
@@ -20,40 +20,142 @@
 
   Rotulagem pela porta serial, durante o ensaio:
     u B          troca a unidade para B
-    c atrito     troca a condicao para atrito
+    c obstrucao  troca a condicao para obstrucao
+    r 2          troca a repeticao para 2
     ?            mostra o estado atual
 
   Sem isso os dados nao servem para classificar: cada linha precisa
-  saber de qual cooler veio e sob qual falha foi gravada.
+  saber sob qual condicao e em qual repeticao foi gravada. A
+  repeticao e o que separa treino de teste.
+
+  Linhas que comecam com # sao comentario e alarme: o pandas ignora
+  com comment='#'. O script analise/captura_serial.py grava tudo num
+  arquivo.
+
+  Precisa da biblioteca Adafruit INA219.
 */
 
 #include <WiFi.h>
 #include <time.h>
-#include "DHT.h"
+#include <Wire.h>
+#include <Adafruit_INA219.h>
 
 // A rede e a senha ficam em credenciais.h, que nao vai para o
 // repositorio. Copie credenciais.h.exemplo como credenciais.h e
 // preencha antes de gravar.
 #include "credenciais.h"
 
-#define PINO_DHT 4
-#define TIPO_DHT DHT11
-DHT dht(PINO_DHT, TIPO_DHT);
+// Fica aqui no topo porque o Arduino gera os prototipos das funcoes
+// antes do resto do codigo, e processarEixo() devolve este tipo.
+struct Caracteristicas {
+  float rms, pico, curtose, fDom, aDom;
+};
 
 // fuso de Brasilia, sem horario de verao
 const long  FUSO_SEGUNDOS = -3 * 3600;
 const char* SERVIDOR_NTP  = "pool.ntp.org";
 
-const unsigned long INTERVALO_MS = 3000;
-unsigned long ultimaLeitura = 0;
+// --- ADXL345 ---------------------------------------------------------
+
+#define ENDERECO_ADXL 0x53
+
+#define REG_DEVID     0x00
+#define REG_BW_RATE   0x2C
+#define REG_POWER_CTL 0x2D
+#define REG_DATA_FMT  0x31
+#define REG_DATAX0    0x32
+#define REG_FIFO_CTL  0x38
+#define REG_FIFO_STAT 0x39
+
+// Resolucao total: 3,9 mg por passo em qualquer faixa.
+const float G_POR_PASSO = 1.0 / 256.0;
+
+// 100 kHz e 400 Hz: a combinacao ja provada na bancada.
+const uint32_t CLOCK_I2C = 100000;
+const uint8_t  TAXA_REG  = 0x0C;   // 400 Hz
+
+// Potencia de 2, exigencia da FFT. 512 amostras a 400 Hz dao janelas
+// de ~1,3 s e resolucao de ~0,8 Hz.
+#define N_AMOSTRAS 512
+
+// Abaixo disso a FFT enxerga deriva lenta, nao o motor.
+const float FREQ_MINIMA_HZ = 3.0;
+
+// --- INA219 e tacometro ----------------------------------------------
+
+#define ENDERECO_INA 0x40
+#define PINO_TACOMETRO 18
+#define PULSOS_POR_VOLTA 2
+
+const unsigned long INTERVALO_INA_MS = 20;
+
+Adafruit_INA219 ina219;
+
+volatile unsigned long pulsos = 0;
+
+void IRAM_ATTR contarPulso() {
+  pulsos++;
+}
+
+// --- estado ----------------------------------------------------------
 
 bool horaValida = false;
+bool adxlOk = false;
+bool inaOk  = false;
 
-char unidade[8]  = "A";
+char unidade[8]   = "A";
 char condicao[24] = "normal";
+int  repeticao    = 1;
+
+float amostras[3][N_AMOSTRAS];
+int   nAmostras = 0;
+unsigned long inicioJanela = 0;
+
+// buffers da FFT, reaproveitados eixo a eixo
+float re[N_AMOSTRAS];
+float im[N_AMOSTRAS];
+
+double somaCorrente = 0;
+int    nCorrente = 0;
+unsigned long ultimaCorrente = 0;
+
+// --- I2C -------------------------------------------------------------
+
+bool escrever(uint8_t reg, uint8_t valor) {
+  Wire.beginTransmission(ENDERECO_ADXL);
+  Wire.write(reg);
+  Wire.write(valor);
+  return Wire.endTransmission() == 0;
+}
+
+bool ler(uint8_t reg, uint8_t* destino, uint8_t quantos) {
+  Wire.beginTransmission(ENDERECO_ADXL);
+  Wire.write(reg);
+  if (Wire.endTransmission() != 0) return false;
+  if (Wire.requestFrom((uint8_t)ENDERECO_ADXL, quantos) != quantos) return false;
+  for (uint8_t i = 0; i < quantos; i++) destino[i] = Wire.read();
+  return true;
+}
+
+bool iniciarAdxl() {
+  uint8_t id;
+  if (!ler(REG_DEVID, &id, 1) || id != 0xE5) return false;
+  return escrever(REG_BW_RATE, TAXA_REG)
+      && escrever(REG_DATA_FMT, 0x0B)     // resolucao total, faixa de 16 g
+      && escrever(REG_FIFO_CTL, 0x00)     // esvazia a fila...
+      && escrever(REG_FIFO_CTL, 0x80)     // ...e liga o modo stream
+      && escrever(REG_POWER_CTL, 0x08);   // medindo
+}
+
+bool inaResponde() {
+  Wire.beginTransmission(ENDERECO_INA);
+  return Wire.endTransmission() == 0;
+}
+
+// --- Wi-Fi e hora ----------------------------------------------------
 
 void conectarWiFi() {
-  Serial.print("conectando em ");
+  Serial.print("# conectando em ");
   Serial.println(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
@@ -62,17 +164,12 @@ void conectarWiFi() {
   unsigned long limite = millis() + 15000;
   while (WiFi.status() != WL_CONNECTED && millis() < limite) {
     delay(300);
-    Serial.print(".");
   }
-  Serial.println();
 
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("# sem Wi-Fi: o carimbo vai contar a partir do boot");
     return;
   }
-
-  Serial.print("# Wi-Fi ok, IP ");
-  Serial.println(WiFi.localIP());
 
   configTime(FUSO_SEGUNDOS, 0, SERVIDOR_NTP);
 
@@ -85,9 +182,8 @@ void conectarWiFi() {
   }
 }
 
-// Devolve o carimbo. Com NTP, data e hora reais. Sem NTP, segundos
-// desde o boot, marcados com o prefixo boot+ para nao se passarem
-// por hora real dentro do CSV.
+// Com NTP, data e hora reais. Sem NTP, segundos desde o boot, com o
+// prefixo boot+ para nao se passarem por hora real dentro do CSV.
 void carimbo(char* destino, size_t tamanho) {
   if (horaValida) {
     struct tm agora;
@@ -99,6 +195,17 @@ void carimbo(char* destino, size_t tamanho) {
   snprintf(destino, tamanho, "boot+%lu", millis() / 1000);
 }
 
+// --- rotulagem -------------------------------------------------------
+
+void mostrarEstado() {
+  Serial.print("# unidade=");
+  Serial.print(unidade);
+  Serial.print(" condicao=");
+  Serial.print(condicao);
+  Serial.print(" repeticao=");
+  Serial.println(repeticao);
+}
+
 void lerComandos() {
   if (!Serial.available()) return;
 
@@ -107,56 +214,132 @@ void lerComandos() {
   if (linha.length() == 0) return;
 
   if (linha == "?") {
-    Serial.print("# unidade=");
-    Serial.print(unidade);
-    Serial.print(" condicao=");
-    Serial.println(condicao);
+    mostrarEstado();
     return;
   }
 
   if (linha.startsWith("u ")) {
     linha.substring(2).toCharArray(unidade, sizeof(unidade));
-    Serial.print("# unidade agora e ");
-    Serial.println(unidade);
+    mostrarEstado();
     return;
   }
 
   if (linha.startsWith("c ")) {
     linha.substring(2).toCharArray(condicao, sizeof(condicao));
-    Serial.print("# condicao agora e ");
-    Serial.println(condicao);
+    mostrarEstado();
     return;
   }
 
-  Serial.println("# comandos: 'u <unidade>', 'c <condicao>', '?'");
+  if (linha.startsWith("r ")) {
+    repeticao = linha.substring(2).toInt();
+    mostrarEstado();
+    return;
+  }
+
+  Serial.println("# comandos: 'u <unidade>', 'c <condicao>', 'r <repeticao>', '?'");
 }
 
-void setup() {
-  Serial.begin(115200);
-  delay(300);
+// --- processamento da janela -----------------------------------------
 
-  dht.begin();
-  conectarWiFi();
-
-  // As linhas de comentario comecam com # para o pandas ignorar
-  // com comment='#' na hora de ler o CSV.
-  Serial.println("data_hora,unidade,condicao,temp_ar_c,temp_amb_c,delta_t_c,"
-                 "corrente_ma,rpm,vib_rms_x,vib_rms_y,vib_rms_z");
+// FFT radix-2 no proprio lugar, sobre re[] e im[].
+void fft(int n) {
+  for (int i = 1, j = 0; i < n; i++) {
+    int bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      float t = re[i]; re[i] = re[j]; re[j] = t;
+      t = im[i]; im[i] = im[j]; im[j] = t;
+    }
+  }
+  for (int tam = 2; tam <= n; tam <<= 1) {
+    float ang = -2.0 * PI / tam;
+    float wr = cos(ang), wi = sin(ang);
+    for (int i = 0; i < n; i += tam) {
+      float cr = 1, ci = 0;
+      for (int k = 0; k < tam / 2; k++) {
+        int a = i + k, b = i + k + tam / 2;
+        float tr = re[b] * cr - im[b] * ci;
+        float ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr;
+        im[b] = im[a] - ti;
+        re[a] += tr;
+        im[a] += ti;
+        float ncr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = ncr;
+      }
+    }
+  }
 }
 
-void loop() {
-  lerComandos();
+// Calcula as caracteristicas de um eixo. A media da janela sai antes
+// de tudo: ela e a gravidade, que e fixa e taparia a vibracao.
+Caracteristicas processarEixo(int eixo, float taxaHz) {
+  const float* x = amostras[eixo];
+  int n = N_AMOSTRAS;
 
-  if (millis() - ultimaLeitura < INTERVALO_MS) return;
-  ultimaLeitura = millis();
+  double soma = 0;
+  for (int i = 0; i < n; i++) soma += x[i];
+  float media = soma / n;
+
+  double m2 = 0, m4 = 0;
+  float pico = 0;
+  for (int i = 0; i < n; i++) {
+    float d = x[i] - media;
+    double d2 = (double)d * d;
+    m2 += d2;
+    m4 += d2 * d2;
+    if (fabs(d) > pico) pico = fabs(d);
+  }
+  m2 /= n;
+  m4 /= n;
+
+  Caracteristicas c;
+  c.rms     = sqrt(m2);
+  c.pico    = pico;
+  c.curtose = m2 > 0 ? m4 / (m2 * m2) : 0;
+
+  // Janela de Hann para a FFT, que reduz o vazamento entre faixas.
+  for (int i = 0; i < n; i++) {
+    float hann = 0.5 * (1 - cos(2 * PI * i / (n - 1)));
+    re[i] = (x[i] - media) * hann;
+    im[i] = 0;
+  }
+  fft(n);
+
+  // Amplitude em g: 2/N pelo espectro de um lado, e /0,5 pelo ganho
+  // da janela de Hann.
+  int kMin = (int)ceil(FREQ_MINIMA_HZ * n / taxaHz);
+  if (kMin < 1) kMin = 1;
+  float melhor = 0;
+  int kMelhor = kMin;
+  for (int k = kMin; k < n / 2; k++) {
+    float mag = sqrt(re[k] * re[k] + im[k] * im[k]);
+    if (mag > melhor) {
+      melhor = mag;
+      kMelhor = k;
+    }
+  }
+  c.fDom = kMelhor * taxaHz / n;
+  c.aDom = melhor * 4.0 / n;
+  return c;
+}
+
+void emitirJanela() {
+  unsigned long duracaoMs = millis() - inicioJanela;
+  // A taxa real do ADXL345 tem tolerancia; medir e mais honesto que
+  // assumir 400 Hz na conversao para frequencia.
+  float taxaHz = duracaoMs > 0 ? N_AMOSTRAS * 1000.0 / duracaoMs : 400.0;
+
+  noInterrupts();
+  unsigned long p = pulsos;
+  pulsos = 0;
+  interrupts();
+  float rpm = duracaoMs > 0 ? (float)p / PULSOS_POR_VOLTA * 60000.0 / duracaoMs : 0;
 
   char data_hora[32];
   carimbo(data_hora, sizeof(data_hora));
-
-  // Provisorio: o DHT11 ocupa a coluna do ar ambiente ate os dois
-  // DS18B20 chegarem. Ele tem resolucao de 1 grau, o que e grosseiro
-  // demais para a diferenca que o metodo mede, entao e so andaime.
-  float temp_amb = dht.readTemperature();
 
   Serial.print(data_hora);
   Serial.print(",");
@@ -164,19 +347,122 @@ void loop() {
   Serial.print(",");
   Serial.print(condicao);
   Serial.print(",");
-  Serial.print("");                          // temp_ar_c    DS18B20
+  Serial.print(repeticao);
   Serial.print(",");
-  if (!isnan(temp_amb)) Serial.print(temp_amb, 1);
+  Serial.print(taxaHz, 1);
+
+  for (int eixo = 0; eixo < 3; eixo++) {
+    Caracteristicas c = processarEixo(eixo, taxaHz);
+    Serial.print(",");
+    Serial.print(c.rms, 5);
+    Serial.print(",");
+    Serial.print(c.pico, 4);
+    Serial.print(",");
+    Serial.print(c.curtose, 3);
+    Serial.print(",");
+    Serial.print(c.fDom, 1);
+    Serial.print(",");
+    Serial.print(c.aDom, 5);
+  }
+
   Serial.print(",");
-  Serial.print("");                          // delta_t_c    calculado
+  if (nCorrente > 0) Serial.print(somaCorrente / nCorrente, 1);
   Serial.print(",");
-  Serial.print("");                          // corrente_ma  INA219
-  Serial.print(",");
-  Serial.print("");                          // rpm          tacometro
-  Serial.print(",");
-  Serial.print("");                          // vib_rms_x    ADXL345
-  Serial.print(",");
-  Serial.print("");                          // vib_rms_y    ADXL345
-  Serial.print(",");
-  Serial.println("");                        // vib_rms_z    ADXL345
+  Serial.println(rpm, 0);
+
+  somaCorrente = 0;
+  nCorrente = 0;
+}
+
+// --- principal -------------------------------------------------------
+
+void setup() {
+  Serial.begin(115200);
+  delay(400);
+
+  Wire.begin(21, 22);
+  Wire.setClock(CLOCK_I2C);
+
+  pinMode(PINO_TACOMETRO, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(PINO_TACOMETRO), contarPulso, FALLING);
+
+  conectarWiFi();
+
+  inaOk = inaResponde() && ina219.begin();
+  if (inaOk) ina219.setCalibration_16V_400mA();
+  else Serial.println("# INA219 ausente: a coluna de corrente sai vazia");
+
+  Serial.println("data_hora,unidade,condicao,repeticao,taxa_hz,"
+                 "x_rms,x_pico,x_curtose,x_fdom,x_adom,"
+                 "y_rms,y_pico,y_curtose,y_fdom,y_adom,"
+                 "z_rms,z_pico,z_curtose,z_fdom,z_adom,"
+                 "corrente_ma,rpm");
+  mostrarEstado();
+}
+
+void loop() {
+  static unsigned long ultimoAlarme = 0;
+
+  lerComandos();
+
+  if (!adxlOk) {
+    if (!iniciarAdxl()) {
+      if (millis() - ultimoAlarme >= 1000) {
+        ultimoAlarme = millis();
+        Serial.println("# ALARME: ADXL345 nao responde. Confira SDA, SCL, VCC, GND, CS e SDO.");
+      }
+      delay(50);
+      return;
+    }
+    adxlOk = true;
+    nAmostras = 0;
+    Serial.println("# ADXL345 respondendo");
+  }
+
+  uint8_t estado;
+  if (!ler(REG_FIFO_STAT, &estado, 1)) {
+    adxlOk = false;
+    return;
+  }
+
+  uint8_t entradas = estado & 0x3F;
+  for (uint8_t i = 0; i < entradas; i++) {
+    uint8_t b[6];
+    if (!ler(REG_DATAX0, b, 6)) {
+      adxlOk = false;
+      return;
+    }
+    if (nAmostras == 0) {
+      inicioJanela = millis();
+      noInterrupts();
+      pulsos = 0;
+      interrupts();
+    }
+    for (int k = 0; k < 3; k++) {
+      int16_t bruto = (int16_t)((b[2 * k + 1] << 8) | b[2 * k]);
+      amostras[k][nAmostras] = bruto * G_POR_PASSO;
+    }
+    nAmostras++;
+
+    if (nAmostras == N_AMOSTRAS) {
+      emitirJanela();
+      nAmostras = 0;
+    }
+  }
+
+  // Corrente: media da janela, porque motor sem escovas puxa em pulsos.
+  if (millis() - ultimaCorrente >= INTERVALO_INA_MS) {
+    ultimaCorrente = millis();
+    if (inaOk) {
+      if (inaResponde()) {
+        somaCorrente += ina219.getCurrent_mA();
+        nCorrente++;
+      } else {
+        inaOk = false;
+        Serial.println("# ALARME: INA219 parou de responder");
+      }
+    }
+  }
+
+  delay(2);
 }
