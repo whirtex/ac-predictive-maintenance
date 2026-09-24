@@ -1,8 +1,12 @@
 #!/bin/sh
-# Painel da apresentacao, com o modelo treinado e a placa ao vivo.
-# ./apresentar reserva  toca a sessao 3 gravada, se a placa falhar.
+# Painel da apresentacao: o detector adaptativo aprende o normal do lugar
+# nos primeiros 2 minutos e depois vigia, reaprendendo a cada minuto.
+# Mostra as atualizacoes, os picos e as anomalias continuas.
+#
+# ./apresentar reserva   toca a sessao 3 gravada, com uma falha simulada
+#                        aos 3 minutos, se a placa falhar na hora.
 cd "$(dirname "$0")" || exit 1
 if [ "$1" = "reserva" ]; then
-    exec .venv/bin/python analysis/painel.py --reproduzir data/rep3.csv --modelo
+    exec .venv/bin/python analysis/painel_adaptativo.py --reproduzir data/rep3.csv --falha 180
 fi
-exec .venv/bin/python analysis/painel.py auto --modelo
+exec .venv/bin/python analysis/painel_adaptativo.py
