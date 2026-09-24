@@ -18,6 +18,19 @@ Ferramentas: alicate de corte, chave de fenda pequena e fita.
 Use uma das ventoinhas baratas nos primeiros passos. O cooler de ensaio só entra
 quando tudo já estiver funcionando.
 
+## Regra de segurança: a ordem de ligar o INA219
+
+O INA219 **nunca** pode receber os 12 V (`VIN+` e `VIN−`) sem estar com o `VCC` e o
+`GND` dele ligados. Sem alimentação e sem terra, a corrente dos 12 V acha caminho
+por dentro do chip e sai pelo `SDA` e pelo `SCL` até os pinos 21 e 22 do ESP32.
+Em 23 de setembro de 2026, com o `VCC` e o `GND` do INA219 soltos na mudança de
+bancada, o ESP32 esquentou e sumiu do USB. Ele voltou depois de esfriar, com tudo
+desligado.
+
+Ao montar ou mexer: fonte fora da tomada; primeiro o `VCC` e o `GND` do INA219,
+depois o `SDA` e o `SCL`, depois o `VIN+` e o `VIN−`, e só então a fonte na
+tomada. Ao desmontar, na ordem inversa, começando por tirar a fonte da tomada.
+
 ## Passo 1 — o ventilador gira
 
 Corte o conector pequeno de três fios do ventilador, o que tem o amarelo. O Molex
@@ -131,7 +144,7 @@ IDE. O resto são cinco atalhos, rodados no Terminal dentro de
 ```
 ./gravar        grava uma sessão e abre o gráfico da vibração e da corrente
 ./treinar       treina o modelo com as três sessões
-./apresentar    painel com o modelo treinado, para a apresentação
+./apresentar    painel completo do detector adaptativo, para a apresentação
 ./demonstrar    painel sem o modelo: aprende o padrão em 30 s e avisa as anomalias
 ./grafico       só o gráfico ao vivo: vibração e corrente, sem gravar nem comparar
 ```
@@ -157,9 +170,27 @@ Depois das três: `./treinar`. As sessões 1 e 2 treinam, e a 3 mede o alarme
 falso. Os primeiros 5 minutos de cada sessão são descartados, porque o ventilador
 ainda está aquecendo. Figuras, relatório e modelo vão para `results/`.
 
-Na apresentação, rode `./apresentar`. Se o modelo foi treinado só com o
-ventilador aquecido, ligue o ventilador uns 5 minutos antes. Se a placa falhar,
-`./apresentar reserva` toca a sessão 3 gravada.
+Na apresentação, rode `./apresentar`. O detector aprende o normal do lugar nos
+primeiros 2 minutos, com o ventilador ligado e sem tocar, e depois vigia,
+reaprendendo a cada minuto. Não importa a mesa nem se o ventilador está frio:
+ele aprende ali. O painel mostra o estado, cada atualização do normal, cada
+alarme com um ponto vermelho, a corrente e a rotação. A tecla `M` mostra a nota
+do Isolation Forest em um gráfico adicional. Se a placa falhar, `./apresentar reserva` toca a sessão 3 gravada, com
+uma falha simulada aos 3 minutos, marcada como simulada na tela.
+
+Se pelo menos 80% das leituras permanecerem em alerta por 3 minutos, o painel
+pede que a equipe investigue o equipamento. O detector não aprende com as
+leituras em alerta e preserva o padrão anterior. Mudanças graduais que ele
+considera normais continuam sendo incorporadas automaticamente; essa é uma
+limitação a avaliar nos ensaios de falha lenta.
+
+Para mostrar a detecção e a investigação em 30 segundos, use o vídeo
+`results/ciclo_adaptativo.mp4`. Ele combina a gravação normal da sessão 3 com
+uma anomalia e uma intervenção **simuladas**. Para gerá-lo novamente:
+
+```sh
+.venv/bin/python analysis/video_ciclo.py
+```
 
 `./demonstrar` é a alternativa sem o modelo: aprende o padrão nos primeiros 30
 segundos, com o ventilador ligado e sem tocar, e depois avisa cada pico ou vibração
