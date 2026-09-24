@@ -12,7 +12,7 @@
   A temperatura saiu do projeto em 22 de setembro de 2026, por
   orientacao do professor. O DHT11 provisorio saiu junto.
 
-  Ligacao (ver montagem.md, Passo 4, para a fiacao que funciona):
+  Ligacao (ver docs/montagem.md, Passo 4, para a fiacao que funciona):
     ADXL345 e INA219 -> GPIO 21 SDA, GPIO 22 SCL
     Tacometro cooler -> GPIO 18   (com resistor de 10 kOhm para 3,3 V)
 
@@ -29,7 +29,7 @@
   repeticao e o que separa treino de teste.
 
   Linhas que comecam com # sao comentario e alarme: o pandas ignora
-  com comment='#'. O script analysis/captura_serial.py grava tudo num
+  com comment='#'. O script analysis/legacy/captura_serial.py grava tudo num
   arquivo.
 
   Precisa da biblioteca Adafruit INA219.
