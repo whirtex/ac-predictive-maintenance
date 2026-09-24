@@ -60,7 +60,7 @@ login por página web, que a placa não consegue fazer).
 
 As fileiras `+` e `−` da protoboard só recebem 3,3 V e GND se houver um jumper
 do `3V3` e do `GND` do ESP32 até elas. O passo a passo completo, com os testes de
-cada etapa, está em [`montagem.md`](montagem.md).
+cada etapa, está em [`docs/montagem.md`](docs/montagem.md).
 
 ## Software
 
@@ -77,6 +77,12 @@ No computador: Python 3 com `numpy`, `pandas`, `scikit-learn`, `matplotlib` e
 | Firmware (`firmware/`) | Para que serve |
 |---|---|
 | `aquisicao_esp32` | Extrai características e emite uma linha CSV por janela pela porta serial |
+
+Os sketches de teste, usados para montar e conferir a bancada, ficam em
+`firmware/tests/`:
+
+| Teste (`firmware/tests/`) | Para que serve |
+|---|---|
 | `demo_vibracao` | Gráfico ao vivo da vibração no Serial Plotter, para demonstração |
 | `teste_obstrucao_vibracao` | Compara a vibração com a entrada de ar livre e tapada |
 | `teste_obstrucao` | A mesma comparação, na corrente |
@@ -95,7 +101,7 @@ No computador: Python 3 com `numpy`, `pandas`, `scikit-learn`, `matplotlib` e
 | `videos_duas_bases.py` | Vídeos da mudança brusca, da mudança lenta e dos dois juntos |
 | `figura_arquitetura.py` | Diagrama da arquitetura usado no artigo |
 | `formato.py` | Colunas do CSV da placa e as 5 medidas totais |
-| `treino.py`, `painel.py`, `ao_vivo.py`, `captura_serial.py` | Primeira versão: modelo treinado uma vez, mantido como comparação |
+| `legacy/` | Primeira versão (`treino.py`, `painel.py`, `ao_vivo.py`, `captura_serial.py`): modelo treinado uma vez, mantido como comparação |
 
 ### O que a placa calcula
 
@@ -173,7 +179,7 @@ gerados localmente em `results/`: `video_brusca.mp4`, `video_lenta.mp4` e
 `video_completo.mp4` por `analysis/videos_duas_bases.py`, e `ciclo_adaptativo.mp4`
 por `analysis/video_ciclo.py`.
 
-O passo a passo da montagem e das gravações está em [`montagem.md`](montagem.md).
+O passo a passo da montagem e das gravações está em [`docs/montagem.md`](docs/montagem.md).
 
 ## Customizações
 
@@ -221,14 +227,35 @@ O que foi desenvolvido além do uso padrão das bibliotecas e da IDE:
 - O tacômetro conta a mais; a rotação sai do espectro de vibração.
 - O MQTT não foi implementado; a coleta depende da USB e do computador.
 
+## Organização da pasta
+
+| Pasta | Conteúdo |
+|---|---|
+| `firmware/` | Sketch principal do ESP32; os testes da bancada em `tests/` |
+| `analysis/` | Detector, painel, gravação, avaliação e figuras; a primeira versão em `legacy/` |
+| `data/` | As três sessões normais gravadas |
+| `results/` | Avaliação, figuras e vídeos gerados (os vídeos não vão para o Git) |
+| `assets/` | Imagens usadas no README e no artigo |
+| `paper/` | Artigo (`.tex`), tradução de apoio e `refs.bib` |
+| `docs/` | Montagem, decisões, roteiro da apresentação e documentos do processo |
+| `docs/course/` | Materiais da disciplina: lista de compras, retirada de materiais, seminário 1 |
+
 ## Documentos
 
 | Arquivo | Conteúdo |
 |---|---|
-| `predictive-maintenance.tex` | Artigo, em inglês, no modelo do SBrT |
-| `predictive-maintenance-pt.md` | Tradução de apoio do artigo |
-| `montagem.md` | Montagem da bancada e roteiro dos ensaios |
-| `decisoes-do-projeto.md` | Decisões tomadas, com o porquê, e o que está em aberto |
-| `plano-do-prototipo.md` | Plano e lista de materiais |
-| `requirements.md`, `specifications.md` | Requisitos e especificação |
-| `duvidas-professor.md` | Perguntas levadas ao professor e as respostas |
+| `paper/predictive-maintenance.tex` | Artigo, em inglês, no modelo do SBrT |
+| `paper/predictive-maintenance-pt.md` | Tradução de apoio do artigo |
+| `paper/refs.bib` | Referências do artigo e a entrada do repositório |
+| `docs/montagem.md` | Montagem da bancada e roteiro dos ensaios |
+| `docs/roteiro-apresentacao.md` | Roteiro da apresentação da AP1 |
+| `docs/decisoes-do-projeto.md` | Decisões tomadas, com o porquê, e o que está em aberto |
+| `docs/plano-do-prototipo.md` | Plano e lista de materiais |
+| `docs/requirements.md`, `docs/specifications.md` | Requisitos e especificação |
+| `docs/duvidas-professor.md` | Perguntas levadas ao professor e as respostas |
+| `docs/guia-geral.md` | Checklist das atividades da disciplina |
+| `docs/research-notes.md`, `docs/reference-contributions.md` | Notas sobre as referências e a contribuição de cada uma |
+
+O `.tex` usa os caminhos do projeto no Overleaf (`assets/` e `results/` na mesma
+pasta do arquivo). Para compilar a partir do repositório, copie essas duas pastas
+para dentro de `paper/` ou ajuste os caminhos.
