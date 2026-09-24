@@ -168,9 +168,10 @@ serial da Arduino IDE. Depois, os atalhos:
 | `./demonstrar` | Painel simples: aprende a linha padrão em 30 s e avisa os picos |
 | `./treinar` | Modelo treinado uma vez (primeira versão), sobre `data/rep*.csv` |
 
-Vídeos para a apresentação, em `results/`: `video_brusca.mp4`, `video_lenta.mp4`,
-`video_completo.mp4` (gerados por `analysis/videos_duas_bases.py`) e
-`ciclo_adaptativo.mp4`.
+Os vídeos da apresentação não ficam no repositório, porque são pesados. Eles são
+gerados localmente em `results/`: `video_brusca.mp4`, `video_lenta.mp4` e
+`video_completo.mp4` por `analysis/videos_duas_bases.py`, e `ciclo_adaptativo.mp4`
+por `analysis/video_ciclo.py`.
 
 O passo a passo da montagem e das gravações está em [`montagem.md`](montagem.md).
 
