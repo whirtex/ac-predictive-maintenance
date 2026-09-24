@@ -138,14 +138,12 @@ entre uma repetição e outra.
 ## Gravação dos ensaios, depois de tudo montado
 
 Grave o `firmware/aquisicao_esp32/` na placa e feche o monitor serial do Arduino
-IDE. O resto são cinco atalhos, rodados no Terminal dentro de
+IDE. O resto são três atalhos, rodados no Terminal dentro de
 `predictive-maintenance/`:
 
 ```
 ./gravar        grava uma sessão e abre o gráfico da vibração e da corrente
-./treinar       treina o modelo com as três sessões
 ./apresentar    painel completo do detector adaptativo, para a apresentação
-./demonstrar    painel sem o modelo: aprende o padrão em 30 s e avisa as anomalias
 ./grafico       só o gráfico ao vivo: vibração e corrente, sem gravar nem comparar
 ```
 
@@ -166,9 +164,8 @@ responda só Enter no lugar do número: o arquivo vira `data/teste-HHMMSS.csv`. 
 `./gravar` não grava por cima de uma sessão que já existe; para refazer uma,
 apague o `data/repN.csv` dela antes.
 
-Depois das três: `./treinar`. As sessões 1 e 2 treinam, e a 3 mede o alarme
-falso. Os primeiros 5 minutos de cada sessão são descartados, porque o ventilador
-ainda está aquecendo. Figuras, relatório e modelo vão para `results/`.
+Depois das três, a avaliação do detector roda com
+`.venv/bin/python analysis/avaliar_duas_bases.py`, e os números vão para `results/`.
 
 Na apresentação, rode `./apresentar`. O detector aprende o normal do lugar nos
 primeiros 2 minutos, com o ventilador ligado e sem tocar, e depois vigia,
@@ -192,12 +189,9 @@ uma anomalia e uma intervenção **simuladas**. Para gerá-lo novamente:
 .venv/bin/python analysis/video_ciclo.py
 ```
 
-`./demonstrar` é a alternativa sem o modelo: aprende o padrão nos primeiros 30
-segundos, com o ventilador ligado e sem tocar, e depois avisa cada pico ou vibração
-anormal. Serve para quando não der para esperar o ventilador aquecer. Com o
-`aquisicao_esp32`, o gráfico atualiza a cada 1,3 s: tapar a entrada aparece bem, e
-balançar o ventilador por 2 ou 3 segundos aparece melhor que um toque rápido.
-`Ctrl+C` no terminal, ou fechar a janela, encerra o painel.
+O gráfico atualiza a cada 1,23 s: tapar a entrada aparece bem, e balançar o
+ventilador por 2 ou 3 segundos aparece melhor que um toque rápido. `Ctrl+C` no
+terminal, ou fechar a janela, encerra o painel.
 
 Gravar as falhas (obstrução e desbalanceamento) e medir o F1 ficou para depois da
 AP1.

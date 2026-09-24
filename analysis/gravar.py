@@ -137,7 +137,7 @@ def main():
     if repeticao is not None and repeticao < 3:
         print(f"Desligue o ventilador por 1 minuto e depois grave a sessão {repeticao + 1}.")
     elif repeticao == 3:
-        print("As três sessões estão gravadas. Próximo passo: ./treinar")
+        print("As três sessões estão gravadas. Próximo passo: ./apresentar")
 
 
 if __name__ == "__main__":

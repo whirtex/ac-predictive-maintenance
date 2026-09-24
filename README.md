@@ -171,8 +171,10 @@ serial da Arduino IDE. Depois, os atalhos:
 | `./apresentar reserva` | Toca a sessão 3 com uma falha simulada aos 3 min, se a placa falhar na hora |
 | `./gravar` | Pergunta a sessão (1, 2, 3 ou Enter para teste) e grava em `data/` com gráfico ao vivo |
 | `./grafico` | Só o gráfico da vibração, com a corrente no canto |
-| `./demonstrar` | Painel simples: aprende a linha padrão em 30 s e avisa os picos |
-| `./treinar` | Modelo treinado uma vez (primeira versão), sobre `data/rep*.csv` |
+
+A primeira versão, com o modelo treinado uma vez, não tem atalho. Ela roda direto
+de `analysis/legacy/`, por exemplo
+`.venv/bin/python analysis/legacy/treino.py data/rep*.csv --descarte 300`.
 
 Os vídeos da apresentação não ficam no repositório, porque são pesados. Eles são
 gerados localmente em `results/`: `video_brusca.mp4`, `video_lenta.mp4` e
