@@ -1,30 +1,30 @@
-DETECTOR DE DUAS BASES: avaliacao nas tres sessoes gravadas
-Falhas simuladas por software sobre gravacoes normais reais.
+TWO-BASELINE DETECTOR: evaluation on the three recorded sessions
+Faults simulated in software over real normal recordings.
 
-== 1. ALARME FALSO NO NORMAL (depois dos 2 min de aprendizado)
-  sessao 1 (12.3 min):   base adaptativa:   0.0% (0 de 501)   base fixa:   0.4% (2 de 501)
-  sessao 2 (21.5 min):   base adaptativa:   0.0% (0 de 951)   base fixa:   0.0% (0 de 951)
-  sessao 3 (37.1 min):   base adaptativa:   0.0% (0 de 1717)   base fixa:  10.5% (180 de 1717)
-  total, base adaptativa:   0.0% (0 de 3169 janelas)
-  total, base fixa:   5.7% (182 de 3169 janelas)
+== 1. FALSE ALARMS ON NORMAL DATA (after the 2 min of learning)
+  session 1 (12.3 min):   adaptive baseline:   0.0% (0 of 501)   frozen baseline:   0.4% (2 of 501)
+  session 2 (21.5 min):   adaptive baseline:   0.0% (0 of 951)   frozen baseline:   0.0% (0 of 951)
+  session 3 (37.1 min):   adaptive baseline:   0.0% (0 of 1717)   frozen baseline:  10.5% (180 of 1717)
+  total, adaptive baseline:   0.0% (0 of 3169 windows)
+  total, frozen baseline:   5.7% (182 of 3169 windows)
 
-== 2. FALHA BRUSCA SIMULADA (+30% por 60 s, a cada 5 min de cada sessao)
-  12 falhas injetadas, 12 detectadas
-  janelas da falha em alarme:  99.8% (584 de 585)
-    so pela regua:   45.1%
-    so pelo modelo:   1.2%
-    pelos dois:      53.5%
-  pedidos de investigacao (mudanca persistente): 0
+== 2. SIMULATED SUDDEN FAULT (+30% for 60 s, every 5 min of each session)
+  12 faults injected, 12 detected
+  fault windows in alarm:  99.8% (584 of 585)
+    ruler only:   45.1%
+    model only:    1.2%
+    both:         53.5%
+  inspection requests (persistent change): 0
 
-== 3. MUDANCA LENTA SIMULADA (sessao 3, a partir do minuto 10; subida comeca 4 min depois)
-  1.0% por minuto: alarme em   2.8% das janelas da subida; vs. inicio no fim: +12.2%
-      investigar: nunca
-      com base fixa: alarme em  15.5% das janelas da subida
-  1.5% por minuto: alarme em   4.5% das janelas da subida; vs. inicio no fim: +20.0%
-      investigar: nunca
-      com base fixa: alarme em  44.0% das janelas da subida
-  2.0% por minuto: alarme em  63.1% das janelas da subida; vs. inicio no fim: +1.1%
-      investigar: pedido 11.8 min depois do comeco da subida
-      com base fixa: alarme em  57.2% das janelas da subida
+== 3. SIMULATED SLOW CHANGE (session 3, from minute 10; the rise starts 4 min later)
+  1.0% per minute: alarm in   2.8% of the rise windows; vs. start at the end: +12.2%
+      investigate: never
+      with frozen baseline: alarm in  15.5% of the rise windows
+  1.5% per minute: alarm in   4.5% of the rise windows; vs. start at the end: +20.0%
+      investigate: never
+      with frozen baseline: alarm in  44.0% of the rise windows
+  2.0% per minute: alarm in  63.1% of the rise windows; vs. start at the end: +1.1%
+      investigate: requested 11.8 min after the rise starts
+      with frozen baseline: alarm in  57.2% of the rise windows
 
-figura: results/avaliacao_lenta.png (1,5% por minuto)
+figure: results/slow_drift_evaluation.png (1.5% per minute)
