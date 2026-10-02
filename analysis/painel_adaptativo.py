@@ -62,9 +62,6 @@ SERIO = "#ec835a"
 CRITICO = "#d03b3b"
 NEUTRO = "#8a8984"
 
-CONDICOES = {"normal": "normal", "obstrucao": "obstrução",
-             "desbalanceamento": "desbalanceamento", "atrito": "atrito"}
-
 
 def num(v, casas=3):
     return f"{v:.{casas}f}".replace(".", ",")
@@ -76,7 +73,7 @@ def duracao(s):
 
 
 class Painel:
-    def __init__(self, mostrar_condicao=False):
+    def __init__(self):
         self.detector = A.DetectorAdaptativo()
         self.trava = threading.Lock()
         self.pontos = deque()        # (t, vibracao, anomalia, fora, passou_limite)
@@ -85,8 +82,6 @@ class Painel:
         self.ultimo = None           # resultado da ultima janela
         self.corrente = None
         self.rotacao = None
-        self.condicao = None
-        self.mostrar_condicao = mostrar_condicao
         self.simulando = False
         self.episodio = None
         self.alarmes = 0
@@ -114,8 +109,6 @@ class Painel:
             corrente = janela.get("corrente_ma")
             self.corrente = corrente if corrente == corrente else None
             self.rotacao = r["medidas"]["fdom"] * 60
-            if self.mostrar_condicao:
-                self.condicao = janela.get("condicao")
 
             hora = self.hora(janela)
             novas = self.detector.atualizacoes[self.atualizacoes_vistas:]
@@ -266,7 +259,7 @@ def montar_janela(painel):
             det = painel.detector
             corrente, rotacao = painel.corrente, painel.rotacao
             vibracao = painel.pontos[-1][1] if painel.pontos else None
-            alarmes, condicao, simulando = painel.alarmes, painel.condicao, painel.simulando
+            alarmes, simulando = painel.alarmes, painel.simulando
             deriva = painel.ultimo.get("deriva") if painel.ultimo else None
 
         titulo.set_text(texto)
@@ -299,8 +292,6 @@ def montar_janela(painel):
                 f"normal agora   {num(a['rms_media'])} g",
                 f"vs. início     {(f'{deriva:+.1f}' if deriva is not None else '0.0').replace('.', ',')}%",
             ]
-        if condicao:
-            linhas_info += ["", f"gravado como   {CONDICOES.get(condicao, condicao)}"]
         info.set_text("\n".join(linhas_info))
 
         for artista in extras:
@@ -388,7 +379,7 @@ def janela_da_linha(linha):
         return None
     janela = dict(zip(COLUNAS, campos))
     try:
-        for c in COLUNAS[4:20]:
+        for c in COLUNAS[1:17]:
             janela[c] = float(janela[c])
         for c in ("corrente_ma", "rpm"):
             janela[c] = float(janela[c]) if janela[c] else float("nan")
@@ -453,7 +444,7 @@ def main():
                     help="com --reproduzir: injeta 60 s de falha simulada nesse instante")
     args = ap.parse_args()
 
-    painel = Painel(mostrar_condicao=bool(args.reproduzir))
+    painel = Painel()
     if args.reproduzir:
         alvo, extra = reproduzir, (painel, args.reproduzir, args.velocidade, args.falha)
     else:

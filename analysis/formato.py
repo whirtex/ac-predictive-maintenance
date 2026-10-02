@@ -5,7 +5,7 @@ painel usem a mesma lista sem um importar o outro.
 """
 
 COLUNAS = [
-    "data_hora", "unidade", "condicao", "repeticao", "taxa_hz",
+    "data_hora", "taxa_hz",
     "x_rms", "x_pico", "x_curtose", "x_fdom", "x_adom",
     "y_rms", "y_pico", "y_curtose", "y_fdom", "y_adom",
     "z_rms", "z_pico", "z_curtose", "z_fdom", "z_adom",
