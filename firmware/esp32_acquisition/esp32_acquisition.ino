@@ -1,28 +1,26 @@
 /*
-  Cadeia de aquisicao na ESP32-WROVER-DEV, para gravar as sessoes que
-  alimentam o detector.
+  Acquisition chain on the ESP32-WROVER-DEV, to record the sessions that
+  feed the detector.
 
-  A vibracao e o sinal principal do projeto. A cada janela de 512
-  amostras (cerca de 1,3 s a 400 Hz) a placa calcula, para cada eixo
-  do ADXL345, as caracteristicas no tempo e na frequencia, e emite
-  uma linha CSV. Corrente e rotacao entram como colunas de apoio: se
-  o INA219 ou o tacometro nao estiverem ligados, a coluna sai vazia
-  ou zerada e a gravacao continua.
+  Vibration is the main signal of the project. For every window of 512
+  samples (about 1.3 s at 400 Hz) the board computes, for each axis of the
+  ADXL345, the time and frequency features, and emits one CSV line. Current
+  and speed come as support columns: if the INA219 or the tachometer are not
+  connected, the column comes out empty or zero and the recording goes on.
 
-  A temperatura saiu do projeto em 22 de setembro de 2026, por
-  orientacao do professor. O DHT11 provisorio saiu junto.
+  The temperature left the project on 22 September 2026, on the professor's
+  guidance. The temporary DHT11 left with it.
 
-  Ligacao (ver docs/montagem.md, Passo 4, para a fiacao que funciona):
-    ADXL345 e INA219 -> GPIO 21 SDA, GPIO 22 SCL
-    Tacometro cooler -> GPIO 18   (com resistor de 10 kOhm para 3,3 V)
+  Wiring (see docs/assembly.md, Step 4, for the wiring that works):
+    ADXL345 and INA219 -> GPIO 21 SDA, GPIO 22 SCL
+    Fan tachometer     -> GPIO 18   (with a 10 kOhm resistor to 3.3 V)
 
-  O tacometro entrega DOIS pulsos por volta, padrao de cooler de PC.
+  The tachometer gives TWO pulses per turn, the standard for a PC fan.
 
-  Linhas que comecam com # sao comentario e alarme: o pandas ignora
-  com comment='#'. O script analysis/legacy/captura_serial.py grava tudo num
-  arquivo.
+  Lines that start with # are comments and alarms: pandas ignores them with
+  comment='#'.
 
-  Precisa da biblioteca Adafruit INA219.
+  Needs the Adafruit INA219 library.
 */
 
 #include <WiFi.h>
@@ -30,24 +28,24 @@
 #include <Wire.h>
 #include <Adafruit_INA219.h>
 
-// A rede e a senha ficam em credenciais.h, que nao vai para o
-// repositorio. Copie credenciais.h.exemplo como credenciais.h e
-// preencha antes de gravar.
+// The network name and password live in credentials.h, which is not in the
+// repository. Copy credentials.h.example as credentials.h and fill it in
+// before uploading.
 #include "credentials.h"
 
-// Fica aqui no topo porque o Arduino gera os prototipos das funcoes
-// antes do resto do codigo, e processarEixo() devolve este tipo.
-struct Caracteristicas {
-  float rms, pico, curtose, fDom, aDom;
+// It sits here at the top because the Arduino build generates the function
+// prototypes before the rest of the code, and processAxis() returns this type.
+struct Features {
+  float rms, peak, kurtosis, domFreq, domAmp;
 };
 
-// fuso de Brasilia, sem horario de verao
-const long  FUSO_SEGUNDOS = -3 * 3600;
-const char* SERVIDOR_NTP  = "pool.ntp.org";
+// Brasilia time, no daylight saving
+const long  TIMEZONE_SECONDS = -3 * 3600;
+const char* NTP_SERVER       = "pool.ntp.org";
 
 // --- ADXL345 ---------------------------------------------------------
 
-#define ENDERECO_ADXL 0x53
+#define ADXL_ADDRESS 0x53
 
 #define REG_DEVID     0x00
 #define REG_BW_RATE   0x2C
@@ -57,152 +55,153 @@ const char* SERVIDOR_NTP  = "pool.ntp.org";
 #define REG_FIFO_CTL  0x38
 #define REG_FIFO_STAT 0x39
 
-// Resolucao total: 3,9 mg por passo em qualquer faixa.
-const float G_POR_PASSO = 1.0 / 256.0;
+// Full resolution: 3.9 mg per step in any range.
+const float G_PER_STEP = 1.0 / 256.0;
 
-// 100 kHz e 400 Hz: a combinacao ja provada na bancada.
-const uint32_t CLOCK_I2C = 100000;
-const uint8_t  TAXA_REG  = 0x0C;   // 400 Hz
+// 100 kHz and 400 Hz: the combination already proven on the bench.
+const uint32_t I2C_CLOCK = 100000;
+const uint8_t  RATE_REG  = 0x0C;   // 400 Hz
 
-// Potencia de 2, exigencia da FFT. 512 amostras a 400 Hz dao janelas
-// de ~1,3 s e resolucao de ~0,8 Hz.
-#define N_AMOSTRAS 512
+// A power of 2, as the FFT requires. 512 samples at 400 Hz give windows of
+// ~1.3 s and a resolution of ~0.8 Hz.
+#define N_SAMPLES 512
 
-// Abaixo disso a FFT enxerga deriva lenta, nao o motor.
-const float FREQ_MINIMA_HZ = 3.0;
+// Below this the FFT sees slow drift, not the motor.
+const float MIN_FREQ_HZ = 3.0;
 
-// --- INA219 e tacometro ----------------------------------------------
+// --- INA219 and tachometer -------------------------------------------
 
-#define ENDERECO_INA 0x40
-#define PINO_TACOMETRO 18
-#define PULSOS_POR_VOLTA 2
+#define INA_ADDRESS 0x40
+#define TACH_PIN 18
+#define PULSES_PER_REV 2
 
-const unsigned long INTERVALO_INA_MS = 20;
+const unsigned long INA_INTERVAL_MS = 20;
 
 Adafruit_INA219 ina219;
 
-volatile unsigned long pulsos = 0;
-volatile unsigned long ultimoPulsoUs = 0;
+volatile unsigned long pulses = 0;
+volatile unsigned long lastPulseUs = 0;
 
-// Pulsos mais proximos que isso sao ruido do motor, nao voltas (4 ms
-// aceita ate 7500 RPM). Sem filtro, a bancada contou de 15 a 20 mil
-// RPM; com ele, ~3800 RPM, contra ~2780 RPM que a frequencia dominante
-// da vibracao mostra. A leitura ainda conta a mais e nao e usada pelo
-// modelo: a rotacao confiavel vem de x_fdom x 60. Contar so quedas de
-// pelo menos 1 ms foi testado e zerou a leitura, entao o formato real
-// do pulso precisa ser visto num osciloscopio antes do proximo ajuste.
-const unsigned long INTERVALO_MINIMO_US = 4000;
+// Pulses closer together than this are motor noise, not turns (4 ms allows
+// up to 7500 RPM). Without the filter, the bench counted 15 to 20 thousand
+// RPM; with it, ~3800 RPM, against the ~2780 RPM that the dominant
+// frequency of the vibration shows. The reading still counts too many and
+// the detector does not use it: the reliable speed comes from
+// x_domfreq x 60. Counting only drops of at least 1 ms was tried and
+// zeroed the reading, so the real shape of the pulse has to be seen on an
+// oscilloscope before the next adjustment.
+const unsigned long MIN_INTERVAL_US = 4000;
 
-void IRAM_ATTR contarPulso() {
-  unsigned long agora = micros();
-  if (agora - ultimoPulsoUs < INTERVALO_MINIMO_US) return;
-  ultimoPulsoUs = agora;
-  pulsos++;
+void IRAM_ATTR countPulse() {
+  unsigned long now = micros();
+  if (now - lastPulseUs < MIN_INTERVAL_US) return;
+  lastPulseUs = now;
+  pulses++;
 }
 
-// --- estado ----------------------------------------------------------
+// --- state -----------------------------------------------------------
 
-bool horaValida = false;
+bool timeValid = false;
 bool adxlOk = false;
 bool inaOk  = false;
 
-float amostras[3][N_AMOSTRAS];
-int   nAmostras = 0;
-unsigned long inicioJanela = 0;
+float samples[3][N_SAMPLES];
+int   nSamples = 0;
+unsigned long windowStart = 0;
 
-// buffers da FFT, reaproveitados eixo a eixo
-float re[N_AMOSTRAS];
-float im[N_AMOSTRAS];
+// FFT buffers, reused axis by axis
+float re[N_SAMPLES];
+float im[N_SAMPLES];
 
-double somaCorrente = 0;
-int    nCorrente = 0;
-unsigned long ultimaCorrente = 0;
+double currentSum = 0;
+int    nCurrent = 0;
+unsigned long lastCurrent = 0;
 
 // --- I2C -------------------------------------------------------------
 
-bool escrever(uint8_t reg, uint8_t valor) {
-  Wire.beginTransmission(ENDERECO_ADXL);
+bool writeReg(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(ADXL_ADDRESS);
   Wire.write(reg);
-  Wire.write(valor);
+  Wire.write(value);
   return Wire.endTransmission() == 0;
 }
 
-bool ler(uint8_t reg, uint8_t* destino, uint8_t quantos) {
-  Wire.beginTransmission(ENDERECO_ADXL);
+bool readReg(uint8_t reg, uint8_t* dest, uint8_t count) {
+  Wire.beginTransmission(ADXL_ADDRESS);
   Wire.write(reg);
   if (Wire.endTransmission() != 0) return false;
-  if (Wire.requestFrom((uint8_t)ENDERECO_ADXL, quantos) != quantos) return false;
-  for (uint8_t i = 0; i < quantos; i++) destino[i] = Wire.read();
+  if (Wire.requestFrom((uint8_t)ADXL_ADDRESS, count) != count) return false;
+  for (uint8_t i = 0; i < count; i++) dest[i] = Wire.read();
   return true;
 }
 
-bool iniciarAdxl() {
+bool startAdxl() {
   uint8_t id;
-  if (!ler(REG_DEVID, &id, 1) || id != 0xE5) return false;
-  return escrever(REG_BW_RATE, TAXA_REG)
-      && escrever(REG_DATA_FMT, 0x0B)     // resolucao total, faixa de 16 g
-      && escrever(REG_FIFO_CTL, 0x00)     // esvazia a fila...
-      && escrever(REG_FIFO_CTL, 0x80)     // ...e liga o modo stream
-      && escrever(REG_POWER_CTL, 0x08);   // medindo
+  if (!readReg(REG_DEVID, &id, 1) || id != 0xE5) return false;
+  return writeReg(REG_BW_RATE, RATE_REG)
+      && writeReg(REG_DATA_FMT, 0x0B)     // full resolution, 16 g range
+      && writeReg(REG_FIFO_CTL, 0x00)     // empty the queue...
+      && writeReg(REG_FIFO_CTL, 0x80)     // ...and turn on stream mode
+      && writeReg(REG_POWER_CTL, 0x08);   // measuring
 }
 
-bool inaResponde() {
-  Wire.beginTransmission(ENDERECO_INA);
+bool inaResponds() {
+  Wire.beginTransmission(INA_ADDRESS);
   return Wire.endTransmission() == 0;
 }
 
-bool iniciarIna() {
-  if (!inaResponde() || !ina219.begin()) return false;
+bool startIna() {
+  if (!inaResponds() || !ina219.begin()) return false;
   ina219.setCalibration_16V_400mA();
   return true;
 }
 
-// --- Wi-Fi e hora ----------------------------------------------------
+// --- Wi-Fi and time --------------------------------------------------
 
-void conectarWiFi() {
-  Serial.print("# conectando em ");
+void connectWiFi() {
+  Serial.print("# connecting to ");
   Serial.println(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_SENHA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  unsigned long limite = millis() + 15000;
-  while (WiFi.status() != WL_CONNECTED && millis() < limite) {
+  unsigned long deadline = millis() + 15000;
+  while (WiFi.status() != WL_CONNECTED && millis() < deadline) {
     delay(300);
   }
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("# sem Wi-Fi: o carimbo vai contar a partir do boot");
+    Serial.println("# no Wi-Fi: the timestamp will count from boot");
     return;
   }
 
-  configTime(FUSO_SEGUNDOS, 0, SERVIDOR_NTP);
+  configTime(TIMEZONE_SECONDS, 0, NTP_SERVER);
 
-  struct tm agora;
-  if (getLocalTime(&agora, 10000)) {
-    horaValida = true;
-    Serial.println("# hora sincronizada por NTP");
+  struct tm now;
+  if (getLocalTime(&now, 10000)) {
+    timeValid = true;
+    Serial.println("# time synced by NTP");
   } else {
-    Serial.println("# NTP nao respondeu: o carimbo vai contar a partir do boot");
+    Serial.println("# NTP did not answer: the timestamp will count from boot");
   }
 }
 
-// Com NTP, data e hora reais. Sem NTP, segundos desde o boot, com o
-// prefixo boot+ para nao se passarem por hora real dentro do CSV.
-void carimbo(char* destino, size_t tamanho) {
-  if (horaValida) {
-    struct tm agora;
-    if (getLocalTime(&agora, 100)) {
-      strftime(destino, tamanho, "%Y-%m-%d %H:%M:%S", &agora);
+// With NTP, the real date and time. Without NTP, seconds since boot, with a
+// boot+ prefix so they are not mistaken for real time inside the CSV.
+void timestamp(char* dest, size_t size) {
+  if (timeValid) {
+    struct tm now;
+    if (getLocalTime(&now, 100)) {
+      strftime(dest, size, "%Y-%m-%d %H:%M:%S", &now);
       return;
     }
   }
-  snprintf(destino, tamanho, "boot+%lu", millis() / 1000);
+  snprintf(dest, size, "boot+%lu", millis() / 1000);
 }
 
-// --- processamento da janela -----------------------------------------
+// --- window processing -----------------------------------------------
 
-// FFT radix-2 no proprio lugar, sobre re[] e im[].
+// In-place radix-2 FFT, over re[] and im[].
 void fft(int n) {
   for (int i = 1, j = 0; i < n; i++) {
     int bit = n >> 1;
@@ -213,13 +212,13 @@ void fft(int n) {
       t = im[i]; im[i] = im[j]; im[j] = t;
     }
   }
-  for (int tam = 2; tam <= n; tam <<= 1) {
-    float ang = -2.0 * PI / tam;
+  for (int size = 2; size <= n; size <<= 1) {
+    float ang = -2.0 * PI / size;
     float wr = cos(ang), wi = sin(ang);
-    for (int i = 0; i < n; i += tam) {
+    for (int i = 0; i < n; i += size) {
       float cr = 1, ci = 0;
-      for (int k = 0; k < tam / 2; k++) {
-        int a = i + k, b = i + k + tam / 2;
+      for (int k = 0; k < size / 2; k++) {
+        int a = i + k, b = i + k + size / 2;
         float tr = re[b] * cr - im[b] * ci;
         float ti = re[b] * ci + im[b] * cr;
         re[b] = re[a] - tr;
@@ -234,195 +233,195 @@ void fft(int n) {
   }
 }
 
-// Calcula as caracteristicas de um eixo. A media da janela sai antes
-// de tudo: ela e a gravidade, que e fixa e taparia a vibracao.
-Caracteristicas processarEixo(int eixo, float taxaHz) {
-  const float* x = amostras[eixo];
-  int n = N_AMOSTRAS;
+// Computes the features of one axis. The window mean is removed before
+// anything else: it is gravity, which is fixed and would hide the vibration.
+Features processAxis(int axis, float rateHz) {
+  const float* x = samples[axis];
+  int n = N_SAMPLES;
 
-  double soma = 0;
-  for (int i = 0; i < n; i++) soma += x[i];
-  float media = soma / n;
+  double sum = 0;
+  for (int i = 0; i < n; i++) sum += x[i];
+  float mean = sum / n;
 
   double m2 = 0, m4 = 0;
-  float pico = 0;
+  float peak = 0;
   for (int i = 0; i < n; i++) {
-    float d = x[i] - media;
+    float d = x[i] - mean;
     double d2 = (double)d * d;
     m2 += d2;
     m4 += d2 * d2;
-    if (fabs(d) > pico) pico = fabs(d);
+    if (fabs(d) > peak) peak = fabs(d);
   }
   m2 /= n;
   m4 /= n;
 
-  Caracteristicas c;
-  c.rms     = sqrt(m2);
-  c.pico    = pico;
-  c.curtose = m2 > 0 ? m4 / (m2 * m2) : 0;
+  Features c;
+  c.rms      = sqrt(m2);
+  c.peak     = peak;
+  c.kurtosis = m2 > 0 ? m4 / (m2 * m2) : 0;
 
-  // Janela de Hann para a FFT, que reduz o vazamento entre faixas.
+  // Hann window for the FFT, which reduces leakage between bins.
   for (int i = 0; i < n; i++) {
     float hann = 0.5 * (1 - cos(2 * PI * i / (n - 1)));
-    re[i] = (x[i] - media) * hann;
+    re[i] = (x[i] - mean) * hann;
     im[i] = 0;
   }
   fft(n);
 
-  // Amplitude em g: 2/N pelo espectro de um lado, e /0,5 pelo ganho
-  // da janela de Hann.
-  int kMin = (int)ceil(FREQ_MINIMA_HZ * n / taxaHz);
+  // Amplitude in g: 2/N for the one-sided spectrum, and /0.5 for the gain
+  // of the Hann window.
+  int kMin = (int)ceil(MIN_FREQ_HZ * n / rateHz);
   if (kMin < 1) kMin = 1;
-  float melhor = 0;
-  int kMelhor = kMin;
+  float best = 0;
+  int kBest = kMin;
   for (int k = kMin; k < n / 2; k++) {
     float mag = sqrt(re[k] * re[k] + im[k] * im[k]);
-    if (mag > melhor) {
-      melhor = mag;
-      kMelhor = k;
+    if (mag > best) {
+      best = mag;
+      kBest = k;
     }
   }
-  c.fDom = kMelhor * taxaHz / n;
-  c.aDom = melhor * 4.0 / n;
+  c.domFreq = kBest * rateHz / n;
+  c.domAmp  = best * 4.0 / n;
   return c;
 }
 
-void emitirJanela() {
-  unsigned long duracaoMs = millis() - inicioJanela;
-  // A taxa real do ADXL345 tem tolerancia; medir e mais honesto que
-  // assumir 400 Hz na conversao para frequencia.
-  float taxaHz = duracaoMs > 0 ? N_AMOSTRAS * 1000.0 / duracaoMs : 400.0;
+void emitWindow() {
+  unsigned long durationMs = millis() - windowStart;
+  // The real rate of the ADXL345 has a tolerance; measuring it is more
+  // honest than assuming 400 Hz in the conversion to frequency.
+  float rateHz = durationMs > 0 ? N_SAMPLES * 1000.0 / durationMs : 400.0;
 
   noInterrupts();
-  unsigned long p = pulsos;
-  pulsos = 0;
+  unsigned long p = pulses;
+  pulses = 0;
   interrupts();
-  float rpm = duracaoMs > 0 ? (float)p / PULSOS_POR_VOLTA * 60000.0 / duracaoMs : 0;
+  float rpm = durationMs > 0 ? (float)p / PULSES_PER_REV * 60000.0 / durationMs : 0;
 
-  char data_hora[32];
-  carimbo(data_hora, sizeof(data_hora));
+  char datetime[32];
+  timestamp(datetime, sizeof(datetime));
 
-  Serial.print(data_hora);
+  Serial.print(datetime);
   Serial.print(",");
-  Serial.print(taxaHz, 1);
+  Serial.print(rateHz, 1);
 
-  for (int eixo = 0; eixo < 3; eixo++) {
-    Caracteristicas c = processarEixo(eixo, taxaHz);
+  for (int axis = 0; axis < 3; axis++) {
+    Features c = processAxis(axis, rateHz);
     Serial.print(",");
     Serial.print(c.rms, 5);
     Serial.print(",");
-    Serial.print(c.pico, 4);
+    Serial.print(c.peak, 4);
     Serial.print(",");
-    Serial.print(c.curtose, 3);
+    Serial.print(c.kurtosis, 3);
     Serial.print(",");
-    Serial.print(c.fDom, 1);
+    Serial.print(c.domFreq, 1);
     Serial.print(",");
-    Serial.print(c.aDom, 5);
+    Serial.print(c.domAmp, 5);
   }
 
   Serial.print(",");
-  if (nCorrente > 0) Serial.print(somaCorrente / nCorrente, 1);
+  if (nCurrent > 0) Serial.print(currentSum / nCurrent, 1);
   Serial.print(",");
   Serial.println(rpm, 0);
 
-  somaCorrente = 0;
-  nCorrente = 0;
+  currentSum = 0;
+  nCurrent = 0;
 }
 
-// --- principal -------------------------------------------------------
+// --- main ------------------------------------------------------------
 
 void setup() {
   Serial.begin(115200);
   delay(400);
 
   Wire.begin(21, 22);
-  Wire.setClock(CLOCK_I2C);
+  Wire.setClock(I2C_CLOCK);
 
-  pinMode(PINO_TACOMETRO, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(PINO_TACOMETRO), contarPulso, FALLING);
+  pinMode(TACH_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(TACH_PIN), countPulse, FALLING);
 
-  conectarWiFi();
+  connectWiFi();
 
-  inaOk = iniciarIna();
-  if (!inaOk) Serial.println("# INA219 ausente: a coluna de corrente sai vazia");
+  inaOk = startIna();
+  if (!inaOk) Serial.println("# INA219 absent: the current column comes out empty");
 
-  Serial.println("data_hora,taxa_hz,"
-                 "x_rms,x_pico,x_curtose,x_fdom,x_adom,"
-                 "y_rms,y_pico,y_curtose,y_fdom,y_adom,"
-                 "z_rms,z_pico,z_curtose,z_fdom,z_adom,"
-                 "corrente_ma,rpm");
+  Serial.println("datetime,rate_hz,"
+                 "x_rms,x_peak,x_kurtosis,x_domfreq,x_domamp,"
+                 "y_rms,y_peak,y_kurtosis,y_domfreq,y_domamp,"
+                 "z_rms,z_peak,z_kurtosis,z_domfreq,z_domamp,"
+                 "current_ma,rpm");
 }
 
 void loop() {
-  static unsigned long ultimoAlarme = 0;
+  static unsigned long lastAlarm = 0;
 
   if (!adxlOk) {
-    if (!iniciarAdxl()) {
-      if (millis() - ultimoAlarme >= 1000) {
-        ultimoAlarme = millis();
-        Serial.println("# ALARME: ADXL345 nao responde. Confira SDA, SCL, VCC, GND, CS e SDO.");
+    if (!startAdxl()) {
+      if (millis() - lastAlarm >= 1000) {
+        lastAlarm = millis();
+        Serial.println("# ALARM: ADXL345 not responding. Check SDA, SCL, VCC, GND, CS and SDO.");
       }
       delay(50);
       return;
     }
     adxlOk = true;
-    nAmostras = 0;
-    Serial.println("# ADXL345 respondendo");
+    nSamples = 0;
+    Serial.println("# ADXL345 responding");
   }
 
-  uint8_t estado;
-  if (!ler(REG_FIFO_STAT, &estado, 1)) {
+  uint8_t status;
+  if (!readReg(REG_FIFO_STAT, &status, 1)) {
     adxlOk = false;
     return;
   }
 
-  uint8_t entradas = estado & 0x3F;
-  for (uint8_t i = 0; i < entradas; i++) {
+  uint8_t entries = status & 0x3F;
+  for (uint8_t i = 0; i < entries; i++) {
     uint8_t b[6];
-    if (!ler(REG_DATAX0, b, 6)) {
+    if (!readReg(REG_DATAX0, b, 6)) {
       adxlOk = false;
       return;
     }
-    if (nAmostras == 0) {
-      inicioJanela = millis();
+    if (nSamples == 0) {
+      windowStart = millis();
       noInterrupts();
-      pulsos = 0;
+      pulses = 0;
       interrupts();
     }
     for (int k = 0; k < 3; k++) {
-      int16_t bruto = (int16_t)((b[2 * k + 1] << 8) | b[2 * k]);
-      amostras[k][nAmostras] = bruto * G_POR_PASSO;
+      int16_t raw = (int16_t)((b[2 * k + 1] << 8) | b[2 * k]);
+      samples[k][nSamples] = raw * G_PER_STEP;
     }
-    nAmostras++;
+    nSamples++;
 
-    if (nAmostras == N_AMOSTRAS) {
-      emitirJanela();
-      nAmostras = 0;
+    if (nSamples == N_SAMPLES) {
+      emitWindow();
+      nSamples = 0;
     }
   }
 
-  // Corrente: media da janela, porque motor sem escovas puxa em pulsos.
-  if (millis() - ultimaCorrente >= INTERVALO_INA_MS) {
-    ultimaCorrente = millis();
+  // Current: window average, because a brushless motor draws in pulses.
+  if (millis() - lastCurrent >= INA_INTERVAL_MS) {
+    lastCurrent = millis();
     if (inaOk) {
-      if (inaResponde()) {
-        somaCorrente += ina219.getCurrent_mA();
-        nCorrente++;
+      if (inaResponds()) {
+        currentSum += ina219.getCurrent_mA();
+        nCurrent++;
       } else {
         inaOk = false;
-        Serial.println("# ALARME: INA219 parou de responder");
+        Serial.println("# ALARM: INA219 stopped responding");
       }
     }
   }
 
-  // Sem o INA219, tenta de novo a cada 2 s, e a coleta de vibracao
-  // segue enquanto isso.
-  static unsigned long ultimaTentativaIna = 0;
-  if (!inaOk && millis() - ultimaTentativaIna >= 2000) {
-    ultimaTentativaIna = millis();
-    if (iniciarIna()) {
+  // Without the INA219, it tries again every 2 s, and the vibration
+  // collection goes on in the meantime.
+  static unsigned long lastInaAttempt = 0;
+  if (!inaOk && millis() - lastInaAttempt >= 2000) {
+    lastInaAttempt = millis();
+    if (startIna()) {
       inaOk = true;
-      Serial.println("# INA219 respondendo");
+      Serial.println("# INA219 responding");
     }
   }
 
