@@ -1,14 +1,15 @@
-"""Monitor simples da placa: a vibracao num grafico e a corrente no canto.
+"""Simple board monitor: the vibration on a chart and the current in the corner.
 
-Nao compara nada, nao tem linha padrao nem avisos. So mostra o que o
-aquisicao_esp32 esta medindo agora. Use pelo atalho ./grafico.
+It compares nothing, has no reference line and gives no warnings. It only
+shows what esp32_acquisition is measuring right now. Use it through the
+./plot shortcut.
 
-Com --seguir, em vez de ler a placa, acompanha o arquivo que o ./gravar
-esta gravando. E assim que o ./gravar mostra o grafico.
+With --follow, instead of reading the board, it follows the file that ./record
+is writing. That is how ./record shows the chart.
 
-A placa so pode ser lida por um programa de cada vez: feche o monitor
-serial do Arduino IDE e nao rode junto com o ./gravar, que ja abre o
-proprio grafico.
+The board can only be read by one program at a time: close the Arduino IDE
+serial monitor, and do not run this together with ./record, which already
+opens its own chart.
 """
 
 import glob
@@ -20,150 +21,146 @@ from collections import deque
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.ticker import FuncFormatter
 
-from csv_format import COLUNAS
+from csv_format import COLUMNS
 
-JANELA_S = 120
+WINDOW_S = 120
 
-SUPERFICIE = "#fcfcfb"
-TINTA = "#0b0b0b"
-TINTA_2 = "#52514e"
-GRADE = "#e4e3df"
-SERIE = "#2a78d6"
+SURFACE = "#fcfcfb"
+INK = "#0b0b0b"
+INK_2 = "#52514e"
+GRID = "#e4e3df"
+SERIES = "#2a78d6"
 
-dados = deque()          # (t, vibracao, corrente)
-trava = threading.Lock()
-
-
-def num(v, casas):
-    return f"{v:.{casas}f}".replace(".", ",")
+data = deque()          # (t, vibration, current)
+lock = threading.Lock()
 
 
-def achar_porta():
-    portas = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/cu.SLAB*")
-                    + glob.glob("/dev/cu.wchusbserial*"))
-    if not portas:
-        print("A placa não foi encontrada. Confira o cabo USB.")
+def num(v, digits):
+    return f"{v:.{digits}f}"
+
+
+def find_port():
+    ports = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/cu.SLAB*")
+                   + glob.glob("/dev/cu.wchusbserial*"))
+    if not ports:
+        print("The board was not found. Check the USB cable.")
         sys.exit(1)
-    return portas[0]
+    return ports[0]
 
 
-def interpretar(linha):
-    """Devolve (vibracao, corrente) de uma linha do aquisicao_esp32."""
-    campos = linha.split(",")
-    if len(campos) != len(COLUNAS) or campos[0] == "data_hora":
+def parse(line):
+    """Returns (vibration, current) from one esp32_acquisition line."""
+    fields = line.split(",")
+    if len(fields) != len(COLUMNS) or fields[0] == "datetime":
         return None
-    valores = dict(zip(COLUNAS, campos))
+    values = dict(zip(COLUMNS, fields))
     try:
-        vibracao = math.sqrt(sum(float(valores[e + "_rms"]) ** 2 for e in "xyz"))
-        corrente = float(valores["corrente_ma"]) if valores["corrente_ma"] else None
+        vibration = math.sqrt(sum(float(values[a + "_rms"]) ** 2 for a in "xyz"))
+        current = float(values["current_ma"]) if values["current_ma"] else None
     except ValueError:
         return None
-    return vibracao, corrente
+    return vibration, current
 
 
-def ler_placa(caminho):
+def read_board(path):
     import serial
-    porta = serial.Serial(caminho, 115200, timeout=1)
-    porta.readline()   # a primeira linha pode chegar cortada
+    port = serial.Serial(path, 115200, timeout=1)
+    port.readline()   # the first line may arrive cut off
     while True:
-        linha = porta.readline().decode(errors="replace").strip()
-        leitura = interpretar(linha)
-        if leitura:
-            adicionar(time.monotonic(), *leitura)
+        line = port.readline().decode(errors="replace").strip()
+        reading = parse(line)
+        if reading:
+            add(time.monotonic(), *reading)
 
 
-def seguir(caminho):
-    """Acompanha um CSV em gravacao: o que ja existe entra de uma vez, com o
-    tempo reconstruido pela duracao das janelas, e o resto entra ao vivo."""
+def follow(path):
+    """Follows a CSV being recorded: what already exists goes in at once, with
+    the time rebuilt from the window duration, and the rest comes in live."""
     import os
-    while not os.path.exists(caminho):
+    while not os.path.exists(path):
         time.sleep(0.5)
-    with open(caminho, encoding="utf-8") as f:
-        antigas = [l.strip() for l in f.read().splitlines()]
-        leituras = [r for r in map(interpretar, antigas) if r]
-        agora = time.monotonic()
-        for i, leitura in enumerate(leituras):
-            adicionar(agora - (len(leituras) - 1 - i) * 1.23, *leitura)
-        pedaco = ""
+    with open(path, encoding="utf-8") as f:
+        old = [l.strip() for l in f.read().splitlines()]
+        readings = [r for r in map(parse, old) if r]
+        now = time.monotonic()
+        for i, reading in enumerate(readings):
+            add(now - (len(readings) - 1 - i) * 1.23, *reading)
+        chunk = ""
         while True:
-            novo = f.readline()
-            if not novo:
+            new = f.readline()
+            if not new:
                 time.sleep(0.2)
                 continue
-            pedaco += novo
-            if not pedaco.endswith("\n"):
+            chunk += new
+            if not chunk.endswith("\n"):
                 continue
-            leitura = interpretar(pedaco.strip())
-            pedaco = ""
-            if leitura:
-                adicionar(time.monotonic(), *leitura)
+            reading = parse(chunk.strip())
+            chunk = ""
+            if reading:
+                add(time.monotonic(), *reading)
 
 
-def adicionar(t, vibracao, corrente):
-    with trava:
-        dados.append((t, vibracao, corrente))
-        while dados and dados[0][0] < t - JANELA_S:
-            dados.popleft()
+def add(t, vibration, current):
+    with lock:
+        data.append((t, vibration, current))
+        while data and data[0][0] < t - WINDOW_S:
+            data.popleft()
 
 
-def montar_janela(relogio=time.monotonic):
+def build_window(clock=time.monotonic):
     plt.rcParams.update({
-        "figure.facecolor": SUPERFICIE, "axes.facecolor": SUPERFICIE,
-        "axes.edgecolor": GRADE, "axes.labelcolor": TINTA_2,
-        "xtick.color": TINTA_2, "ytick.color": TINTA_2, "font.size": 11,
+        "figure.facecolor": SURFACE, "axes.facecolor": SURFACE,
+        "axes.edgecolor": GRID, "axes.labelcolor": INK_2,
+        "xtick.color": INK_2, "ytick.color": INK_2, "font.size": 11,
         "axes.spines.top": False, "axes.spines.right": False,
     })
     fig, ax = plt.subplots(figsize=(10, 5.5))
     try:
-        fig.canvas.manager.set_window_title("Vibração e corrente")
+        fig.canvas.manager.set_window_title("Vibration and current")
     except AttributeError:
         pass
     fig.subplots_adjust(top=0.78)
-    virgula = FuncFormatter(lambda v, _: f"{v:g}".replace(".", ","))
-    ax.xaxis.set_major_formatter(virgula)
-    ax.yaxis.set_major_formatter(virgula)
-    ax.grid(True, color=GRADE, linewidth=0.8)
-    ax.set_xlim(-JANELA_S, 0)
-    ax.set_xlabel("segundos atrás")
-    ax.set_ylabel("vibração total (g)")
-    linha, = ax.plot([], [], color=SERIE, linewidth=2)
+    ax.grid(True, color=GRID, linewidth=0.8)
+    ax.set_xlim(-WINDOW_S, 0)
+    ax.set_xlabel("seconds ago")
+    ax.set_ylabel("total vibration (g)")
+    line, = ax.plot([], [], color=SERIES, linewidth=2)
 
-    vib_txt = fig.text(0.125, 0.9, "", fontsize=22, fontweight="bold", color=TINTA)
-    vib_rot = fig.text(0.125, 0.85, "vibração agora", fontsize=11, color=TINTA_2)
-    cor_txt = fig.text(0.9, 0.9, "", fontsize=22, fontweight="bold", color=TINTA, ha="right")
-    cor_rot = fig.text(0.9, 0.85, "corrente agora", fontsize=11, color=TINTA_2, ha="right")
-    _ = (vib_rot, cor_rot)
+    vib_text = fig.text(0.125, 0.9, "", fontsize=22, fontweight="bold", color=INK)
+    vib_label = fig.text(0.125, 0.85, "vibration now", fontsize=11, color=INK_2)
+    cur_text = fig.text(0.9, 0.9, "", fontsize=22, fontweight="bold", color=INK, ha="right")
+    cur_label = fig.text(0.9, 0.85, "current now", fontsize=11, color=INK_2, ha="right")
+    _ = (vib_label, cur_label)
 
-    def atualizar(_):
-        agora = relogio()
-        with trava:
-            copia = list(dados)
-        if not copia:
-            vib_txt.set_text("aguardando a placa...")
-            cor_txt.set_text("")
+    def update(_):
+        now = clock()
+        with lock:
+            copy = list(data)
+        if not copy:
+            vib_text.set_text("waiting for the board...")
+            cur_text.set_text("")
             return []
-        ts = [d[0] - agora for d in copia]
-        vs = [d[1] for d in copia]
-        linha.set_data(ts, vs)
+        ts = [d[0] - now for d in copy]
+        vs = [d[1] for d in copy]
+        line.set_data(ts, vs)
         ax.set_ylim(0, max(vs) * 1.3)
-        _, vibracao, corrente = copia[-1]
-        vib_txt.set_text(f"{num(vibracao, 3)} g")
-        cor_txt.set_text(f"{num(corrente, 0)} mA" if corrente is not None else "sem INA219")
+        _, vibration, current = copy[-1]
+        vib_text.set_text(f"{num(vibration, 3)} g")
+        cur_text.set_text(f"{num(current, 0)} mA" if current is not None else "no INA219")
         return []
 
-    return fig, atualizar
+    return fig, update
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == "--seguir":
-        threading.Thread(target=seguir, args=(sys.argv[2],), daemon=True).start()
+    if len(sys.argv) == 3 and sys.argv[1] == "--follow":
+        threading.Thread(target=follow, args=(sys.argv[2],), daemon=True).start()
     else:
-        porta = achar_porta()
-        threading.Thread(target=ler_placa, args=(porta,), daemon=True).start()
-    fig, atualizar = montar_janela()
-    _animacao = FuncAnimation(fig, atualizar, interval=200, cache_frame_data=False)  # noqa: F841
+        port = find_port()
+        threading.Thread(target=read_board, args=(port,), daemon=True).start()
+    fig, update = build_window()
+    _animation = FuncAnimation(fig, update, interval=200, cache_frame_data=False)  # noqa: F841
     try:
         plt.show()
     except KeyboardInterrupt:
