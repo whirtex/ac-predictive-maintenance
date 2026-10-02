@@ -1,199 +1,206 @@
-# Montagem da bancada
+# Bench assembly
 
-Ordem de montagem, um passo por vez. Cada passo se confirma sozinho antes do
-seguinte: se alguma coisa falhar, você sabe exatamente o que mexeu por último.
+Assembly order, one step at a time. Each step confirms itself before the next
+one: if something fails, you know exactly what you touched last.
 
-Os pinos citados são os do `firmware/aquisicao_esp32/`.
+The pins mentioned are the ones in `firmware/esp32_acquisition/`.
 
-## Antes de começar
+## Before you start
 
-| Precisa estar pronto | Como confirmar |
+| Must be ready | How to confirm |
 |---|---|
-| ESP32 gravando pelo cabo USB | a IDE grava sem erro |
-| INA219 com barra de pinos e borneira soldadas | scanner mostra `0x40` |
-| ADXL345 com barra de pinos soldada | scanner mostra `0x53` |
+| ESP32 uploading over USB | the IDE uploads without errors |
+| INA219 with header pins and terminal block soldered | the board does not print `# INA219 absent` (address `0x40`) |
+| ADXL345 with header pins soldered | the board prints `# ADXL345 responding` (address `0x53`) |
 
-Ferramentas: alicate de corte, chave de fenda pequena e fita.
+These messages come from the acquisition firmware, on the serial port at 115200.
+If the INA219 is connected after the board starts, the firmware retries every
+2 seconds and prints `# INA219 responding` when it finds it.
 
-Use uma das ventoinhas baratas nos primeiros passos. O cooler de ensaio só entra
-quando tudo já estiver funcionando.
+Tools: wire cutters, a small screwdriver and tape.
 
-## Regra de segurança: a ordem de ligar o INA219
+Use one of the cheap fans in the first steps. The test fan only goes in once
+everything works.
 
-O INA219 **nunca** pode receber os 12 V (`VIN+` e `VIN−`) sem estar com o `VCC` e o
-`GND` dele ligados. Sem alimentação e sem terra, a corrente dos 12 V acha caminho
-por dentro do chip e sai pelo `SDA` e pelo `SCL` até os pinos 21 e 22 do ESP32.
-Em 23 de setembro de 2026, com o `VCC` e o `GND` do INA219 soltos na mudança de
-bancada, o ESP32 esquentou e sumiu do USB. Ele voltou depois de esfriar, com tudo
-desligado.
+## Safety rule: the order of connecting the INA219
 
-Ao montar ou mexer: fonte fora da tomada; primeiro o `VCC` e o `GND` do INA219,
-depois o `SDA` e o `SCL`, depois o `VIN+` e o `VIN−`, e só então a fonte na
-tomada. Ao desmontar, na ordem inversa, começando por tirar a fonte da tomada.
+The INA219 must **never** receive the 12 V (`VIN+` and `VIN−`) without its own
+`VCC` and `GND` connected. With no power and no ground, the 12 V current finds
+a path through the chip and leaves through `SDA` and `SCL` to pins 21 and 22 of
+the ESP32. On 23 September 2026, with the `VCC` and `GND` of the INA219 loose
+during a bench move, the ESP32 got hot and disappeared from USB. It came back
+after cooling down, with everything off.
 
-## Passo 1 — o ventilador gira
+When assembling or touching anything: supply unplugged; first the `VCC` and
+`GND` of the INA219, then `SDA` and `SCL`, then `VIN+` and `VIN−`, and only then
+the supply into the outlet. When taking it apart, do the reverse, starting by
+unplugging the supply.
 
-Corte o conector pequeno de três fios do ventilador, o que tem o amarelo. O Molex
-grande fica de lado, enrolado com fita.
+## Step 1: the fan spins
 
-Descasque uns 5 mm do **vermelho** e do **preto**. O amarelo continua isolado.
+Cut the small three-wire connector of the fan, the one with the yellow wire.
+Set the large Molex aside, wrapped in tape.
 
-No adaptador P4 fêmea: vermelho no `+`, preto no `−`. Espete a fonte na tomada.
+Strip about 5 mm of the **red** and the **black**. The yellow stays insulated.
 
-**Confirma quando:** o ventilador gira.
+On the female P4 adapter: red to `+`, black to `−`. Plug the supply into the
+outlet.
 
-Se não girar, inverta vermelho e preto. É a causa quase sempre, e o ventilador
-aguenta o teste invertido sem queimar.
+**Confirmed when:** the fan spins.
 
-## Passo 2 — a corrente é medida
+If it does not spin, swap red and black. That is almost always the cause, and
+the fan survives the reversed test without burning.
 
-Agora o vermelho deixa de ir direto na fonte e passa por dentro do INA219.
+## Step 2: the current is measured
 
-| De | Para |
+Now the red wire no longer goes straight to the supply and passes through the
+INA219.
+
+| From | To |
 |---|---|
-| `+` do adaptador | `VIN+` do INA219 (fio solto, aperta o parafuso) |
-| `VIN−` do INA219 | vermelho do ventilador |
-| preto do ventilador | linha do negativo, na protoboard |
-| `−` do adaptador | mesma linha do negativo |
-| `GND` do ESP32 | mesma linha do negativo |
+| adapter `+` | INA219 `VIN+` (loose wire, tighten the screw) |
+| INA219 `VIN−` | red of the fan |
+| black of the fan | ground rail on the breadboard |
+| adapter `−` | same ground rail |
+| ESP32 `GND` | same ground rail |
 
-E o lado dos dados do INA219, com quatro jumpers: `VCC` nos 3,3 V, `GND` no GND,
-`SDA` no pino 21, `SCL` no pino 22.
+And the data side of the INA219, with four jumpers: `VCC` to 3.3 V, `GND` to
+GND, `SDA` to pin 21, `SCL` to pin 22.
 
-Os três negativos precisam se encontrar na mesma linha. Sem isso o sensor não lê.
+The three grounds must meet on the same rail. Without that the sensor does not
+read.
 
-**Confirma quando:** o ventilador continua girando e o scanner acha `0x40`.
+**Confirmed when:** the fan keeps spinning and the `current_ma` column shows a
+value (about 150 mA with the fan on).
 
-## Passo 3 — a rotação é lida
+## Step 3: the speed is read
 
-Descasque o fio amarelo e espete ele numa linha livre da protoboard.
+Strip the yellow wire and push it into a free row of the breadboard.
 
-Na mesma linha, ponha uma perna de um resistor de **10 kΩ**. A outra perna vai na
-linha dos 3,3 V.
+In the same row, put one leg of a **10 kΩ** resistor. The other leg goes to the
+3.3 V rail.
 
-Ainda na mesma linha do amarelo, um jumper até o **pino 18** do ESP32.
+Still in the yellow wire's row, a jumper to **pin 18** of the ESP32.
 
-O resistor vai nos **3,3 V**, nunca nos 12 V. Nos 12 V ele queima o ESP32.
+The resistor goes to **3.3 V**, never to 12 V. On 12 V it burns the ESP32.
 
-**Confirma quando:** o firmware mostra rotação por volta de 3000 no cooler de ensaio.
+**Confirmed when:** the firmware shows a speed around 3000 on the test fan.
 
-## Passo 4 — a vibração
+## Step 4: the vibration
 
-O ADXL345 tem 8 pinos, e os 6 que importam vão assim:
+The ADXL345 has 8 pins, and the 6 that matter go like this:
 
-| Pino do ADXL345 | Vai para |
+| ADXL345 pin | Goes to |
 |---|---|
-| `SDA` | linha de SDA da protoboard, que vai ao GPIO **21** do ESP32 |
-| `SCL` | linha de SCL da protoboard, que vai ao GPIO **22** do ESP32 |
-| `VCC` | fileira do `+` da protoboard |
-| `CS` | mesma fileira do `+`, junto com o `VCC` — liga o modo I2C |
-| `GND` | fileira do `−` da protoboard |
-| `SDO` | mesma fileira do `−`, junto com o `GND` — fixa o endereço em `0x53` |
+| `SDA` | the breadboard SDA row, which goes to GPIO **21** of the ESP32 |
+| `SCL` | the breadboard SCL row, which goes to GPIO **22** of the ESP32 |
+| `VCC` | the `+` rail of the breadboard |
+| `CS` | the same `+` rail, together with `VCC`: it turns on I2C mode |
+| `GND` | the `−` rail of the breadboard |
+| `SDO` | the same `−` rail, together with `GND`: it fixes the address at `0x53` |
 
-`INT1` e `INT2` ficam sem ligar.
+`INT1` and `INT2` stay unconnected.
 
-**A armadilha que mais custou tempo na bancada:** as fileiras `+`/`−` da
-protoboard são isoladas do resto. Elas só viram 3,3 V e GND de verdade se
-existir um jumper explícito do pino `3V3` do ESP32 até a fileira `+`, e do
-`GND` do ESP32 até a fileira `−`. Sem esses dois jumpers, o sensor fica sem
-alimentação nenhuma, e nenhum scanner acha `0x53` — sem dar nenhuma pista de
-que o problema é esse.
+**The trap that cost the most time on the bench:** the `+`/`−` rails of the
+breadboard are isolated from the rest. They only become real 3.3 V and GND if
+there is an explicit jumper from the `3V3` pin of the ESP32 to the `+` rail,
+and from the `GND` of the ESP32 to the `−` rail. Without those two jumpers the
+sensor gets no power at all, and nothing finds `0x53`, with no hint that this
+is the problem.
 
-O ADXL345 divide o barramento com o INA219. Um pino do ESP32 só aceita um jumper,
-então os fios se encontram na protoboard. Os furos ligados por dentro são os de
-**mesmo número**, de `a` a `e` ou de `f` a `j`; furos na mesma letra e em números
-diferentes (30j e 31j) não se tocam. Num número livre ficam o `SDA` do ADXL345, o
-`SDA` do INA219 e um jumper até o GPIO 21, cada um numa letra; noutro número, o
-mesmo com os dois `SCL` e o GPIO 22. Se o ESP32 estiver espetado na protoboard, basta usar
-furos livres da coluna do pino 21 e da coluna do pino 22. O `VCC` dos dois vai na
-mesma fileira `+`.
+The ADXL345 shares the bus with the INA219. An ESP32 pin only takes one jumper,
+so the wires meet on the breadboard. The holes connected inside are the ones
+with the **same number**, from `a` to `e` or from `f` to `j`; holes in the same
+letter and different numbers (30j and 31j) do not touch. In one free number go
+the ADXL345 `SDA`, the INA219 `SDA` and a jumper to GPIO 21, each in its own
+letter; in another number, the same with the two `SCL` and GPIO 22. If the
+ESP32 is plugged into the breadboard, just use free holes of the column of pin
+21 and of the column of pin 22. The `VCC` of both goes to the same `+` rail.
 
-**Confirma quando:** o scanner acha `0x40` e `0x53` juntos.
+**Confirmed when:** the board prints `# ADXL345 responding` and the
+`current_ma` column still shows a value.
 
-Só depois de confirmar é que ele vai para o ventilador. Colar antes significa
-descobrir defeito com a placa já grudada.
+Only after confirming does it go onto the fan. Gluing it first means finding a
+defect with the board already stuck.
 
-Onde cola: na **lateral** do cooler, aquela faixa lisa que dá a volta nele, perto de
-um canto. Não é na face da hélice.
+Where to glue: on the **side** of the fan, the smooth strip that runs around it,
+near a corner. Not on the face of the blades.
 
-A barra de pinos fica **para fora da borda**, pendurada no vazio. Se ela ficar entre
-a placa e o cooler, a placa sobe em quatro palafitas e passa a balançar sozinha.
+The pin header sticks **out past the edge**, hanging in the air. If it ends up
+between the board and the fan, the board rises on four stilts and starts to
+swing on its own.
 
-Prenda os fios com fita na tábua, a uns 3 cm do sensor, e sempre na mesma posição.
-Fio solto balança e o balanço entra na medição como se fosse vibração da máquina.
+Tape the wires to the board about 3 cm from the sensor, always in the same
+position. A loose wire swings, and the swing enters the measurement as if it
+were machine vibration.
 
-## Passo 5 — montagem na tábua
+## Step 5: mounting on the board
 
-O ventilador fica **em pé**, colado na tábua com super cola. Aparafusar em pé se
-mostrou difícil demais, e por isso a falha de fixação frouxa saiu do projeto (ver
-`decisoes-do-projeto.md`).
+The fan stands **upright**, glued to the wooden board with super glue. Screwing
+it on upright turned out too hard, which is why the loose-mounting fault left
+the project (see `design-decisions.md`).
 
-Antes de colar, confira que a entrada e a saída de ar ficam livres. Se a borda
-apoiada na tábua tapar a hélice, a condição normal já nasce meio obstruída, e a
-obstrução é justamente uma das falhas medidas.
+Before gluing, check that the air inlet and outlet stay free. If the edge
+resting on the board covers the blades, the normal condition is born partly
+obstructed, and obstruction is exactly one of the faults to be measured.
 
-Espere a cola curar antes do primeiro ensaio. A colagem é única: ela não é refeita
-entre uma repetição e outra.
+Wait for the glue to cure before the first recording. The glue joint is made
+once: it is not redone between one recording and the next.
 
-## Gravação dos ensaios, depois de tudo montado
+## Recording, once everything is assembled
 
-Grave o `firmware/aquisicao_esp32/` na placa e feche o monitor serial do Arduino
-IDE. O resto são três atalhos, rodados no Terminal dentro de
-`predictive-maintenance/`:
+Upload `firmware/esp32_acquisition/` to the board and close the Arduino IDE
+serial monitor. The rest is three shortcuts, run in the Terminal inside the
+repository root:
 
 ```
-./gravar        grava uma sessão e abre o gráfico da vibração e da corrente
-./apresentar    painel completo do detector adaptativo, para a apresentação
-./grafico       só o gráfico ao vivo: vibração e corrente, sem gravar nem comparar
+./record    records a session and opens the vibration and current chart
+./present   full panel of the adaptive detector, for the presentation
+./plot      live chart only: vibration and current, with no recording or comparing
 ```
 
-Na primeira vez, prepare o Python: `python3 -m venv .venv` e depois
+The first time, set up Python: `python3 -m venv .venv` and then
 `.venv/bin/pip install -r analysis/requirements.txt`.
 
-**Para a AP1, grave só a operação normal, em três sessões.** Em cada uma:
+**For the first assessment (AP1), record only normal operation, in three
+sessions.** In each one:
 
-1. Ligue o ventilador.
-2. Rode `./gravar` e responda o nome da gravação. Para as três sessões da avaliação,
-   use `rep1`, `rep2` e `rep3`; para gravar em outro lugar, use o nome dele (por
-   exemplo `mesa-b` ou `chao`).
-3. Deixe gravar. O gráfico abre sozinho, e o terminal mostra o tempo e avisa quando
-   der 10 minutos.
-4. Aperte `Ctrl+C`. O gráfico fecha junto.
-5. Desligue o ventilador por 1 minuto antes da sessão seguinte.
+1. Turn the fan on.
+2. Run `./record` and answer with the recording name. For the three evaluation
+   sessions, use `rep1`, `rep2` and `rep3`; to record in another place, use its
+   name (for example `table-b` or `floor`).
+3. Let it record. The chart opens by itself, and the terminal shows the time and
+   warns at 10 minutes.
+4. Press `Ctrl+C`. The chart closes with it.
+5. Turn the fan off for 1 minute before the next session.
 
-Não mexa na montagem entre as sessões. Para um teste que não entra na avaliação,
-responda só Enter no lugar do nome: o arquivo vira `data/teste-HHMMSS.csv`. O
-`./gravar` não grava por cima de uma gravação que já existe; para refazer uma,
-apague o `data/<nome>.csv` dela antes.
+Do not touch the assembly between sessions. For a test that does not go into
+the evaluation, answer with just Enter instead of a name: the file becomes
+`data/test-HHMMSS.csv`. `./record` does not write over a recording that already
+exists; to redo one, delete its `data/<name>.csv` first.
 
-Depois das três, a avaliação do detector roda com
-`.venv/bin/python analysis/avaliar_duas_bases.py`, e os números vão para `results/`.
+After the three, the detector evaluation runs with
+`.venv/bin/python analysis/evaluate_two_baselines.py`, and the numbers go to
+`results/`.
 
-Na apresentação, rode `./apresentar`. O detector aprende o normal do lugar nos
-primeiros 2 minutos, com o ventilador ligado e sem tocar, e depois vigia,
-reaprendendo a cada minuto. Não importa a mesa nem se o ventilador está frio:
-ele aprende ali. O painel mostra o estado, cada atualização do normal, cada
-alarme com um ponto vermelho, a corrente e a rotação. A tecla `M` mostra a nota
-do Isolation Forest em um gráfico adicional. Se a placa falhar, `./apresentar reserva` toca a sessão 3 gravada, com
-uma falha simulada aos 3 minutos, marcada como simulada na tela.
+At the presentation, run `./present`. The detector learns what is normal in
+place during the first 2 minutes, with the fan on and untouched, and then
+watches, relearning every minute. It does not matter which table it sits on or
+whether the fan is cold: it learns right there. The panel shows the state, each
+update of the normal, each alarm as a red dot, the current and the speed. The
+`M` key shows the Isolation Forest score in an extra chart. If the board fails,
+`./present backup` plays recorded session 3 with a simulated fault at 3
+minutes, marked as simulated on screen.
 
-Se pelo menos 80% das leituras permanecerem em alerta por 3 minutos, o painel
-pede que a equipe investigue o equipamento. O detector não aprende com as
-leituras em alerta e preserva o padrão anterior. Mudanças graduais que ele
-considera normais continuam sendo incorporadas automaticamente; essa é uma
-limitação a avaliar nos ensaios de falha lenta.
+If at least 80% of the readings stay in alert for 3 minutes, the panel asks the
+team to investigate the equipment. The detector does not learn from readings in
+alert and keeps the previous pattern. Gradual changes that it considers normal
+keep being absorbed automatically; that is a limitation to evaluate in the slow
+fault tests.
 
-Para mostrar a detecção e a investigação em 30 segundos, use o vídeo
-`results/ciclo_adaptativo.mp4`. Ele combina a gravação normal da sessão 3 com
-uma anomalia e uma intervenção **simuladas**. Para gerá-lo novamente:
+The chart updates every 1.23 s: covering the inlet shows up well, and shaking
+the fan for 2 or 3 seconds shows up better than a quick tap. `Ctrl+C` in the
+terminal, or closing the window, ends the panel.
 
-```sh
-.venv/bin/python analysis/video_ciclo.py
-```
-
-O gráfico atualiza a cada 1,23 s: tapar a entrada aparece bem, e balançar o
-ventilador por 2 ou 3 segundos aparece melhor que um toque rápido. `Ctrl+C` no
-terminal, ou fechar a janela, encerra o painel.
-
-Gravar as falhas (obstrução e desbalanceamento) e medir o F1 ficou para depois da
-AP1.
+Recording the faults (obstruction and imbalance) and measuring F1 is left for
+after the AP1.
