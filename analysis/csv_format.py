@@ -1,72 +1,73 @@
-"""Formato da linha CSV emitida pelo aquisicao_esp32.
+"""Format of the CSV line emitted by esp32_acquisition.
 
-Fica num arquivo proprio para que o treino, a deteccao ao vivo e o
-painel usem a mesma lista sem um importar o outro.
+It lives in its own file so that the live monitor, the detector and the panel
+share the same list without importing each other.
 """
 
-COLUNAS = [
-    "data_hora", "taxa_hz",
-    "x_rms", "x_pico", "x_curtose", "x_fdom", "x_adom",
-    "y_rms", "y_pico", "y_curtose", "y_fdom", "y_adom",
-    "z_rms", "z_pico", "z_curtose", "z_fdom", "z_adom",
-    "corrente_ma", "rpm",
+COLUMNS = [
+    "datetime", "rate_hz",
+    "x_rms", "x_peak", "x_kurtosis", "x_domfreq", "x_domamp",
+    "y_rms", "y_peak", "y_kurtosis", "y_domfreq", "y_domamp",
+    "z_rms", "z_peak", "z_kurtosis", "z_domfreq", "z_domamp",
+    "current_ma", "rpm",
 ]
 
-VIBRACAO = [c for c in COLUNAS if c[:2] in ("x_", "y_", "z_")]
-APOIO = ["corrente_ma", "rpm"]
+VIBRATION = [c for c in COLUMNS if c[:2] in ("x_", "y_", "z_")]
+SUPPORT = ["current_ma", "rpm"]
 
-# Nome de cada caracteristica em palavras, para as mensagens de alerta.
-NOMES = {"rms": "RMS", "pico": "pico", "curtose": "curtose",
-         "fdom": "frequência dominante", "adom": "amplitude da frequência dominante"}
-
-
-def nome_legivel(coluna):
-    if coluna in NOMES_TOTAIS:
-        return NOMES_TOTAIS[coluna]
-    if coluna == "corrente_ma":
-        return "corrente"
-    if coluna == "rpm":
-        return "rotação"
-    eixo, tipo = coluna.split("_", 1)
-    return f"{NOMES.get(tipo, tipo)} do eixo {eixo.upper()}"
+# Name of each feature in words, for the alarm messages.
+NAMES = {"rms": "RMS", "peak": "peak", "kurtosis": "kurtosis",
+         "domfreq": "dominant frequency", "domamp": "dominant-frequency amplitude"}
 
 
-# --- medidas totais -----------------------------------------------------
-# Somam os tres eixos num valor so. Nao dependem de como a vibracao se
-# divide entre X, Y e Z, que muda quando o ventilador pousa diferente na
-# mesa: nas tres sessoes gravadas, o RMS do eixo X variou de 0,075 a
-# 0,146 g, enquanto o total ficou entre 0,145 e 0,154 g.
+def readable_name(column):
+    if column in TOTAL_NAMES:
+        return TOTAL_NAMES[column]
+    if column == "current_ma":
+        return "current"
+    if column == "rpm":
+        return "speed"
+    axis, kind = column.split("_", 1)
+    return f"{NAMES.get(kind, kind)} on the {axis.upper()} axis"
 
-TOTAIS = ["rms_total", "pico_total", "adom_total", "curtose_media", "fdom"]
 
-NOMES_TOTAIS = {
-    "rms_total": "vibração total",
-    "pico_total": "pico da vibração",
-    "adom_total": "força da frequência dominante",
-    "curtose_media": "trancos (curtose)",
-    "fdom": "frequência dominante",
+# --- total measures ------------------------------------------------------
+# They add the three axes into a single value, so they do not depend on how
+# the vibration splits between X, Y and Z. That split changes when the fan
+# sits differently on the table: across the three recorded sessions the RMS
+# of the X axis ranged from 0.075 to 0.146 g, while the total stayed between
+# 0.145 and 0.154 g.
+
+TOTALS = ["rms_total", "peak_total", "domamp_total", "kurtosis_mean", "domfreq"]
+
+TOTAL_NAMES = {
+    "rms_total": "total vibration",
+    "peak_total": "vibration peak",
+    "domamp_total": "strength of the dominant frequency",
+    "kurtosis_mean": "impacts (kurtosis)",
+    "domfreq": "dominant frequency",
 }
 
 
-def derivar_janela(v):
-    """As 5 medidas totais de uma janela (dicionario com as colunas)."""
+def derive_window(v):
+    """The 5 total measures of one window (a dictionary with the columns)."""
     import math
-    soma = lambda tipo: math.sqrt(sum(float(v[f"{e}_{tipo}"]) ** 2 for e in "xyz"))
-    fdoms = sorted(float(v[f"{e}_fdom"]) for e in "xyz")
+    total = lambda kind: math.sqrt(sum(float(v[f"{a}_{kind}"]) ** 2 for a in "xyz"))
+    domfreqs = sorted(float(v[f"{a}_domfreq"]) for a in "xyz")
     return {
-        "rms_total": soma("rms"),
-        "pico_total": soma("pico"),
-        "adom_total": soma("adom"),
-        "curtose_media": sum(float(v[f"{e}_curtose"]) for e in "xyz") / 3,
-        "fdom": fdoms[1],
+        "rms_total": total("rms"),
+        "peak_total": total("peak"),
+        "domamp_total": total("domamp"),
+        "kurtosis_mean": sum(float(v[f"{a}_kurtosis"]) for a in "xyz") / 3,
+        "domfreq": domfreqs[1],
     }
 
 
-def derivar_tabela(df):
-    """Acrescenta as 5 medidas totais a uma tabela do pandas."""
+def derive_table(df):
+    """Adds the 5 total measures to a pandas table."""
     import numpy as np
-    for tipo in ("rms", "pico", "adom"):
-        df[f"{tipo}_total"] = np.sqrt(sum(df[f"{e}_{tipo}"] ** 2 for e in "xyz"))
-    df["curtose_media"] = sum(df[f"{e}_curtose"] for e in "xyz") / 3
-    df["fdom"] = df[[f"{e}_fdom" for e in "xyz"]].median(axis=1)
+    for kind in ("rms", "peak", "domamp"):
+        df[f"{kind}_total"] = np.sqrt(sum(df[f"{a}_{kind}"] ** 2 for a in "xyz"))
+    df["kurtosis_mean"] = sum(df[f"{a}_kurtosis"] for a in "xyz") / 3
+    df["domfreq"] = df[[f"{a}_domfreq" for a in "xyz"]].median(axis=1)
     return df
