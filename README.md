@@ -1,284 +1,272 @@
-# Manutenção preditiva de equipamentos de ar-condicionado
+# Predictive maintenance for air-conditioning equipment
 
-Protótipo da disciplina IBM3119, Projeto de Sistemas Embarcados (Ibmec, 2026).
+Prototype for the course IBM3119, Embedded Systems Project (Ibmec, 2026).
 
-O objetivo é um sistema embarcado que monitora a condição de equipamentos de
-ar-condicionado em operação contínua, como os de salas de servidores, hospitais e
-shelters de telecomunicação, e detecta desvios que possam orientar a manutenção.
-A vibração é o sinal principal e a única entrada do detector, por orientação do
-professor. Corrente e rotação são registradas como apoio. A primeira versão detecta
-anomalias. Ela não diz qual é a falha nem estima a vida útil restante.
+This project was developed in a repository shared with another project of the
+course, and it was moved here with its commit history filtered. The commits
+before the English translation have the files and comments in Portuguese. The
+translation is in the commits that follow.
 
-O desenvolvimento tem duas etapas. **Na bancada**, um ventilador de 12 V permite
-montar a cadeia de aquisição e provocar alterações controladas. **No
-equipamento-alvo**, a instalação dos sensores num ar-condicionado ainda depende de
-acesso ao aparelho e de uma montagem elétrica adequada. Os resultados da bancada não
-demonstram desempenho num ar-condicionado real.
+The goal is an embedded system that monitors the condition of air-conditioning
+equipment in continuous operation, such as units in server rooms, hospitals and
+telecom shelters, and detects deviations that can guide maintenance. Vibration
+is the main signal and the only input of the detector, on the professor's
+guidance. Current and speed are recorded as support. The first version detects
+anomalies. It does not say which fault it is and does not estimate the
+remaining useful life.
 
-Como funciona hoje: um ESP32 lê o ADXL345, o INA219 e o tacômetro, calcula as
-características de cada janela de ~1,23 s e envia uma linha CSV pela USB. No
-computador, um **detector adaptativo de duas bases** aprende o normal do lugar nos
-primeiros 2 minutos, reaprende a cada minuto e guarda a base da instalação para
-mostrar a deriva. O MQTT fica para a instalação em campo (a rede da faculdade exige
-login por página web, que a placa não consegue fazer).
+Development has two stages. **On the bench**, a 12 V fan makes it possible to
+build the acquisition chain and cause controlled changes. **On the target
+equipment**, installing the sensors on an air conditioner still depends on
+access to the unit and on a proper electrical setup. The bench results do not
+show performance on a real air conditioner.
 
-## Estado da bancada experimental
+How it works today: an ESP32 reads the ADXL345, the INA219 and the tachometer,
+computes the features of each window of ~1.23 s and sends one CSV line over
+USB. On the computer, an **adaptive two-baseline detector** learns what is
+normal in place during the first 2 minutes, relearns every minute and keeps the
+installation baseline to show drift. MQTT is left for the field installation
+(the college network requires a web login, which the board cannot complete).
 
-| Parte | Situação |
+## Bench status
+
+| Part | Status |
 |---|---|
-| Vibração (ADXL345) | Funcionando; a continuidade das amostras dentro da janela ainda não foi medida |
-| Corrente (INA219) | Funcionando, média por janela (148 a 153 mA nas sessões) |
-| Rotação (tacômetro) | Lê, mas conta de 25% a 52% a mais; a rotação confiável vem do pico de vibração (~46,4 Hz, ~2780 rpm) |
-| Características no ESP32 | Funcionando; a FFT foi conferida com senos conhecidos |
-| Gravação, painel e detector adaptativo | Funcionando ao vivo na bancada |
-| Dados | Três sessões normais independentes em `data/` (12,3, 21,5 e 37,1 min) |
-| Falhas | Simuladas por software sobre as sessões normais; perturbações físicas só nos testes ao vivo. Gravações de desbalanceamento, atrito e obstrução ficam para a próxima etapa |
+| Vibration (ADXL345) | Working; the continuity of the samples inside the window has not been measured yet |
+| Current (INA219) | Working, window average (148 to 153 mA across the sessions) |
+| Speed (tachometer) | Reads, but counts 25% to 52% too many; the reliable speed comes from the vibration peak (~46.4 Hz, ~2780 rpm) |
+| Features on the ESP32 | Working; the FFT was checked against known sine waves |
+| Recording, panel and adaptive detector | Working live on the bench |
+| Data | Three independent normal sessions in `data/` (12.3, 21.5 and 37.1 min) |
+| Faults | Simulated in software over the normal sessions; physical disturbances only in the live tests. Recordings of imbalance, friction and obstruction are left for the next stage |
 
-## Hardware da bancada experimental
+## Bench hardware
 
-| Componente | Função |
+| Component | Role |
 |---|---|
-| ESP32-WROVER-DEV | Microcontrolador, com Wi-Fi para a hora por NTP |
-| ADXL345 (placa GY-291) | Acelerômetro de 3 eixos, colado na lateral do ventilador |
-| INA219 | Corrente do ventilador, em série com a alimentação |
-| Ventilador de 12 V, 80 × 80 × 25 mm, 3 fios | Equipamento de ensaio; o fio amarelo é o tacômetro |
-| Fonte regulada de 12 V, 1 A, e adaptador P4 com borne | Alimentação do ventilador |
-| Resistor de 10 kΩ | Pull-up do tacômetro |
-| Protoboard, jumpers e tábua de madeira | Montagem; o ventilador fica colado em pé na tábua |
+| ESP32-WROVER-DEV | Microcontroller, with Wi-Fi for the time over NTP |
+| ADXL345 (GY-291 board) | 3-axis accelerometer, glued to the side of the fan |
+| INA219 | Fan current, in series with the supply |
+| 12 V fan, 80 × 80 × 25 mm, 3 wires | Test equipment; the yellow wire is the tachometer |
+| Regulated 12 V, 1 A supply, and P4 adapter with terminal | Fan power |
+| 10 kΩ resistor | Tachometer pull-up |
+| Breadboard, jumpers and a wooden board | Assembly; the fan is glued upright to the board |
 
-### Ligações da bancada
+### Bench wiring
 
-| De | Para |
+| From | To |
 |---|---|
 | ADXL345 `SDA` / `SCL` | GPIO 21 / GPIO 22 |
-| ADXL345 `VCC` e `CS` | 3,3 V (o `CS` em 3,3 V liga o modo I2C) |
-| ADXL345 `GND` e `SDO` | GND (o `SDO` em GND fixa o endereço `0x53`) |
-| INA219 `SDA` / `SCL` / `VCC` / `GND` | GPIO 21 / GPIO 22 / 3,3 V / GND |
-| `+` da fonte → `VIN+` do INA219 → `VIN−` → vermelho do ventilador | Caminho da corrente medida |
-| Amarelo do ventilador | GPIO 18, com 10 kΩ para 3,3 V |
-| GND do ESP32, preto do ventilador e `−` da fonte | Mesmo ponto |
+| ADXL345 `VCC` and `CS` | 3.3 V (`CS` at 3.3 V turns on I2C mode) |
+| ADXL345 `GND` and `SDO` | GND (`SDO` at GND fixes the address `0x53`) |
+| INA219 `SDA` / `SCL` / `VCC` / `GND` | GPIO 21 / GPIO 22 / 3.3 V / GND |
+| supply `+` → INA219 `VIN+` → `VIN−` → red of the fan | Path of the measured current |
+| Yellow of the fan | GPIO 18, with 10 kΩ to 3.3 V |
+| ESP32 GND, black of the fan and supply `−` | Same point |
 
-As fileiras `+` e `−` da protoboard só recebem 3,3 V e GND se houver um jumper
-do `3V3` e do `GND` do ESP32 até elas. O passo a passo completo, com os testes de
-cada etapa, está em [`docs/montagem.md`](docs/montagem.md).
+The `+` and `−` rails of the breadboard only receive 3.3 V and GND if there is
+a jumper from the `3V3` and the `GND` of the ESP32 to them. The full
+step-by-step, with the check for each stage, is in
+[`docs/assembly.md`](docs/assembly.md).
 
 ## Software
 
-Placa: ESP32 Wrover Module, core `esp32` 3.3.11, Arduino IDE 2.3.10. Biblioteca
-externa: Adafruit INA219 1.2.3. O ADXL345 é lido diretamente por I²C. O sketch
-`aquisicao_esp32` exige um arquivo local `credenciais.h`; copie
-[`credenciais.h.exemplo`](firmware/aquisicao_esp32/credenciais.h.exemplo), preencha
-a rede e a senha e mantenha `credenciais.h` fora do Git. O Wi-Fi só sincroniza o
-relógio por NTP; sem conexão, o CSV usa horários `boot+...`.
+Board: ESP32 Wrover Module, `esp32` core 3.3.11 (it also compiles with 3.3.12),
+Arduino IDE 2.3.10. External library: Adafruit INA219 1.2.3. The ADXL345 is
+read directly over I²C. The `esp32_acquisition` sketch needs a local
+`credentials.h` file; copy
+[`credentials.h.example`](firmware/esp32_acquisition/credentials.h.example),
+fill in the network name and password, and keep `credentials.h` out of Git.
+Wi-Fi only synchronizes the clock over NTP; without a connection, the CSV uses
+`boot+...` timestamps.
 
-No computador: Python 3 com `numpy`, `pandas`, `scikit-learn`, `matplotlib` e
-`pyserial` (lista em `analysis/requirements.txt`).
+On the computer: Python 3 with `numpy`, `pandas`, `scikit-learn`, `matplotlib`
+and `pyserial` (list in `analysis/requirements.txt`).
 
-| Firmware (`firmware/`) | Para que serve |
+| Firmware (`firmware/`) | What it does |
 |---|---|
-| `aquisicao_esp32` | Extrai características e emite uma linha CSV por janela pela porta serial |
+| `esp32_acquisition` | Extracts features and emits one CSV line per window on the serial port |
 
-Os sketches de teste, usados para montar e conferir a bancada, ficam em
-`firmware/tests/`:
-
-| Teste (`firmware/tests/`) | Para que serve |
+| Analysis (`analysis/`) | What it does |
 |---|---|
-| `demo_vibracao` | Gráfico ao vivo da vibração no Serial Plotter, para demonstração |
-| `teste_obstrucao_vibracao` | Compara a vibração com a entrada de ar livre e tapada |
-| `teste_obstrucao` | A mesma comparação, na corrente |
-| `teste_rotacao` | Lê o tacômetro e compara a rotação livre e tapada |
-| `corrente_ao_vivo` | Confere a ligação do INA219 |
-| `scanner_i2c` | Confere solda e ligação dos sensores I2C |
-| `teste_leitura_adxl345` | Conta leituras certas e erradas do ADXL345, para achar mau contato |
+| `adaptive.py` | The two-baseline detector (Isolation Forest + ruler, adaptive baseline, installation reference) |
+| `adaptive_panel.py` | Presentation panel, live or playing a recording |
+| `record.py` | Records a session from the board into `data/` and shows the chart during recording |
+| `monitor.py` | Simple chart of the vibration, with the current in the corner |
+| `evaluate_two_baselines.py` | Offline evaluation of the detector on the three sessions (the numbers of the article) |
+| `architecture_figure.py` | Architecture diagram used in the article |
+| `csv_format.py` | Columns of the board CSV and the 5 total measures |
 
-| Análise (`analysis/`) | Para que serve |
+### What the board computes
+
+The firmware sets the ADXL345 to 400 Hz, with the FIFO in stream mode, and
+forms windows of 512 samples (~1.23 s at the measured 417 Hz). For each axis it
+computes the RMS (with the mean removed), the peak, the kurtosis and, with a
+Hann window and a 512-point FFT, the dominant frequency and its amplitude.
+Current (window average) and speed come out as extra columns. That makes 19
+columns per line.
+
+## Model: two-baseline detector
+
+The detector uses **5 measures that do not depend on the orientation of the
+sensor**: the vector sum of the RMS, of the peaks and of the dominant
+amplitudes of the three axes, the mean kurtosis and the median dominant
+frequency. Each window goes through two tests, and one is enough to raise an
+alarm:
+
+- **Isolation Forest** (150 trees, over the 5 standardized measures). The
+  threshold is the 0.2% quantile of the normal scores. It only raises an alarm
+  if it flags two windows in a row and some measure is at least 3 deviations
+  from normal.
+- **Ruler**: total vibration, peak or dominant amplitude more than 6 robust
+  deviations away (median and MAD, with a floor of 3% of the median).
+
+The alarm says which measure moved and by how much ("total vibration: 1.3 times
+normal").
+
+**The two baselines:**
+
+1. **Adaptive baseline.** It learns for 2 minutes where it sits (skipping the
+   15 s of start-up) and relearns every minute from the last 10 minutes of
+   windows without an alarm. A slow change (warm-up, weather) enters the normal;
+   a fast change becomes an alarm. Windows in alarm, the 30 s after them and the
+   last 30 s before each update are not learned.
+2. **Installation reference.** The baseline of the first 2 minutes is kept and
+   never changes. The panel shows "vs. start": how far the current normal has
+   moved from it. It is what reveals a slow wear that the adaptive baseline
+   would absorb.
+
+If the alarms cover 80% of the windows for 3 minutes, the detector asks for an
+inspection and does not learn the change.
+
+**What the detector learns and what is fixed.** The code has no fixed vibration
+value. On each machine, the detector learns by itself the normal (the median
+and the deviation of each measure), the Isolation Forest threshold, the band of
+the ruler and the installation reference. The parameters below, on the other
+hand, are fixed in `adaptive.py` and were tuned for the bench fan:
+
+| Parameter | Value |
 |---|---|
-| `adaptativo.py` | O detector de duas bases (Isolation Forest + régua, linha de base adaptativa, referência da instalação) |
-| `painel_adaptativo.py` | Painel da apresentação, ao vivo ou tocando uma gravação |
-| `gravar.py` | Grava uma sessão da placa em `data/` e mostra o gráfico durante a gravação |
-| `monitor.py` | Gráfico simples da vibração, com a corrente no canto |
-| `avaliar_duas_bases.py` | Avaliação offline do detector nas três sessões (números do artigo) |
-| `videos_duas_bases.py` | Vídeos da mudança brusca, da mudança lenta e dos dois juntos |
-| `figura_arquitetura.py` | Diagrama da arquitetura usado no artigo |
-| `formato.py` | Colunas do CSV da placa e as 5 medidas totais |
-| `legacy/` | Primeira versão (`treino.py`, `painel.py`, `ao_vivo.py`, `captura_serial.py`): modelo treinado uma vez, mantido como comparação |
+| Ruler | 6 deviations |
+| Deviations for the model to raise an alarm | 3, on some measure, in two windows in a row |
+| Floor of the deviation | 3% of the median |
+| Start-up skipped in the first learning | 15 s |
+| Initial learning | 2 min |
+| Relearning | every 60 s, from the last 10 min |
+| Block after an alarm | 30 s |
+| Inspection request | 80% of windows in alarm for 3 min |
 
-### O que a placa calcula
+These values hold for the bench. They have not been shown on other air
+conditioners, and there is no general value yet. The likely way forward is to
+work with percentages that fit any machine, but that is not decided.
 
-O firmware configura o ADXL345 para 400 Hz, com o FIFO em modo stream, e forma
-janelas de 512 amostras (~1,23 s a 417 Hz medidos). Para cada eixo calcula RMS
-(sem a média), pico, curtose e, com janela de Hann e FFT de 512 pontos, a frequência
-dominante e a amplitude dela. Corrente (média da janela) e rotação saem como colunas
-adicionais. São 19 colunas por linha.
+**Results** (`./.venv/bin/python analysis/evaluate_two_baselines.py`, output in
+`results/two_baseline_evaluation.txt`):
 
-## Modelo: detector de duas bases
-
-O detector usa **5 medidas que não dependem da orientação do sensor**: a soma
-vetorial dos RMS, dos picos e das amplitudes dominantes dos três eixos, a curtose
-média e a frequência dominante mediana. Cada janela passa por dois testes, e basta
-um para virar alarme:
-
-- **Isolation Forest** (150 árvores, sobre as 5 medidas padronizadas). O limiar é o
-  quantil de 0,2% das notas do normal. Só acusa se marcar duas janelas seguidas e
-  alguma medida estiver a pelo menos 3 desvios do normal.
-- **Régua**: vibração total, pico ou amplitude dominante a mais de 6 desvios
-  robustos (mediana e MAD, com piso de 3% da mediana).
-
-O alarme diz qual medida se afastou e quanto ("vibração total: 1,3 vezes o normal").
-
-**As duas bases:**
-
-1. **Base adaptativa.** Aprende 2 minutos no lugar onde está (pulando os 15 s da
-   partida) e reaprende a cada minuto com os últimos 10 minutos de janelas sem
-   alarme. Mudança lenta (aquecimento, clima) entra no normal; mudança rápida vira
-   alarme. Janelas em alarme, os 30 s seguintes e os últimos 30 s antes de cada
-   atualização não são aprendidos.
-2. **Referência da instalação.** A base dos 2 primeiros minutos fica guardada e
-   nunca muda. O painel mostra "vs. início": quanto o normal atual já se afastou
-   dela. É o que revela um desgaste lento que a base adaptativa absorveria.
-
-Se os alarmes cobrem 80% das janelas por 3 minutos, o detector pede investigação e
-não aprende a mudança.
-
-**O que o detector aprende e o que está fixo.** O código não tem nenhum valor fixo de
-vibração. Em cada máquina, o detector aprende sozinho o normal (a mediana e o desvio
-de cada medida), o limiar do Isolation Forest, a faixa da régua e a referência da
-instalação. Já os parâmetros abaixo estão fixos no `adaptativo.py` e foram ajustados
-para o ventilador da bancada:
-
-| Parâmetro | Valor |
-|---|---|
-| Régua | 6 desvios |
-| Desvios para o modelo acusar | 3, em alguma medida, em duas janelas seguidas |
-| Piso do desvio | 3% da mediana |
-| Partida descartada no primeiro aprendizado | 15 s |
-| Aprendizado inicial | 2 min |
-| Reaprendizado | a cada 60 s, com os últimos 10 min |
-| Bloqueio depois de um alarme | 30 s |
-| Pedido de investigação | 80% das janelas em alarme por 3 min |
-
-Esses valores valem para a bancada. Não foram comprovados em outros ar-condicionados,
-e ainda não há um valor geral. O caminho provável é trabalhar com porcentagens que
-sirvam para qualquer máquina, mas isso não está decidido.
-
-**Resultados** (`./.venv/bin/python analysis/avaliar_duas_bases.py`, saída em
-`results/avaliacao_duas_bases.txt`):
-
-| Teste | Base adaptativa | Base congelada |
+| Test | Adaptive baseline | Frozen baseline |
 |---|---|---|
-| Alarme falso nas 3 sessões normais (3169 janelas) | 0% | 5,7% |
-| Falha brusca simulada (+30% por 60 s, 12 injeções) | 12 de 12, 99,8% das janelas | |
-| Subida lenta de 1,5%/min | 4,5% das janelas em alarme, "vs. início" +20% | 44% |
-| Subida lenta de 2%/min | 63% em alarme, investigação após 11,8 min | 57% |
+| False alarms on the 3 normal sessions (3169 windows) | 0% | 5.7% |
+| Simulated sudden fault (+30% for 60 s, 12 injections) | 12 of 12, 99.8% of the windows | |
+| Slow rise of 1.5%/min | 4.5% of the windows in alarm, "vs. start" +20% | 44% |
+| Slow rise of 2%/min | 63% in alarm, inspection after 11.8 min | 57% |
 
-As falhas são simuladas por software sobre gravações normais reais. Isso está dito
-no artigo e no painel.
+The faults are simulated in software over real normal recordings. The article
+and the panel say so.
 
-## Como usar
+## How to use
 
-Dentro de `predictive-maintenance/`, uma vez só:
+In the repository root, once:
 
 ```
 python3 -m venv .venv
 .venv/bin/pip install -r analysis/requirements.txt
 ```
 
-Grave o `aquisicao_esp32` na placa (com o `credenciais.h` criado) e feche o monitor
-serial da Arduino IDE. Depois, os atalhos:
+Upload `esp32_acquisition` to the board (with `credentials.h` created) and
+close the Arduino IDE serial monitor. Then the shortcuts:
 
-| Atalho | O que faz |
+| Shortcut | What it does |
 |---|---|
-| `./apresentar` | Painel completo do detector de duas bases, ao vivo. Tecla `M` mostra a nota do modelo |
-| `./apresentar reserva` | Toca a sessão 3 com uma falha simulada aos 3 min, se a placa falhar na hora |
-| `./gravar` | Pergunta o nome da gravação (o lugar do cooler, ou Enter para teste) e grava em `data/` com gráfico ao vivo |
-| `./grafico` | Só o gráfico da vibração, com a corrente no canto |
+| `./present` | Full panel of the two-baseline detector, live. The `M` key shows the model score |
+| `./present backup` | Plays session 3 with a simulated fault at 3 min, in case the board fails on the spot |
+| `./record` | Asks for the recording name (the place of the fan, or Enter for a test) and records into `data/` with a live chart |
+| `./plot` | Only the vibration chart, with the current in the corner |
 
-A primeira versão, com o modelo treinado uma vez, não tem atalho. Ela roda direto
-de `analysis/legacy/`, por exemplo
-`.venv/bin/python analysis/legacy/treino.py data/rep*.csv --descarte 300`.
+The step-by-step of the assembly and of the recordings is in
+[`docs/assembly.md`](docs/assembly.md).
 
-Os vídeos da apresentação não ficam no repositório, porque são pesados. Eles são
-gerados localmente em `results/`: `video_brusca.mp4`, `video_lenta.mp4` e
-`video_completo.mp4` por `analysis/videos_duas_bases.py`, e `ciclo_adaptativo.mp4`
-por `analysis/video_ciclo.py`.
+## Customizations
 
-O passo a passo da montagem e das gravações está em [`docs/montagem.md`](docs/montagem.md).
+What was developed beyond the standard use of the libraries and the IDE:
 
-## Customizações
+- **Direct reading of the ADXL345.** The firmware sets the registers and uses
+  the FIFO in stream mode, without a library.
+- **FFT on the board.** Own radix-2 implementation, with a Hann window and
+  correction of the window gain, so the amplitude comes out in g. Checked with
+  sine waves of known amplitude and frequency.
+- **Rate estimated per window.** The conversion to Hz uses the duration
+  measured by the ESP32 (417 Hz on the bench, not the nominal 400).
+- **Time over NTP instead of an external clock.** The DS1302 module was
+  dropped after measuring it: it ran six times faster than real time.
+- **Sensor failure warnings.** `# ALARM` lines when the ADXL345 or the INA219
+  stop responding; the INA219 is restarted every 2 s.
+- **Tachometer by interrupt**, with a 4 ms debounce, which lowered the reading
+  from ~15 thousand to ~3.6 thousand rpm. It still counts too many.
+- **Current as the window average.** The brushless motor draws current in
+  pulses, and a single reading varies by more than 80 mA with no fault at all.
+- **Total measures independent of the orientation.** The loose fan changed the
+  split of the vibration between the axes without changing the total; the
+  detector now uses only totals.
+- **Two-baseline detector.** Adaptive baseline with protections against
+  learning the fault, a fixed installation reference and an inspection request.
+  The standard scikit-learn Isolation Forest was combined with the robust ruler
+  because its score saturates far from normal, and it got the two-window and
+  3-deviation rules after false alarms in the live tests.
+- **Full panel** with automatic serial reconnection, an event log and a replay
+  mode with a simulated fault.
+- **Shortcuts** (`./record`, `./present` and so on) to record and present
+  without typing long commands.
 
-O que foi desenvolvido além do uso padrão das bibliotecas e da IDE:
+## Limitations
 
-- **Leitura direta do ADXL345.** O firmware configura os registradores e usa o FIFO
-  em modo stream, sem biblioteca.
-- **FFT na placa.** Implementação própria da FFT radix-2, com janela de Hann e
-  correção do ganho da janela, para a amplitude sair em g. Conferida com senos de
-  amplitude e frequência conhecidas.
-- **Taxa estimada por janela.** A conversão para Hz usa a duração medida pelo ESP32
-  (417 Hz na bancada, não os 400 nominais).
-- **Hora por NTP em vez de relógio externo.** O módulo DS1302 foi descartado depois
-  de medido: contava seis vezes mais rápido que o tempo real.
-- **Avisos de falha de sensor.** Linhas `# ALARME` quando o ADXL345 ou o INA219 param
-  de responder; o INA219 é religado a cada 2 s.
-- **Tacômetro por interrupção**, com debounce de 4 ms, que baixou a leitura de
-  ~15 mil para ~3,6 mil rpm. Ainda conta a mais.
-- **Corrente pela média da janela.** O motor sem escovas puxa corrente em pulsos, e
-  uma leitura solta varia mais de 80 mA sem falha nenhuma.
-- **Medidas totais invariantes à orientação.** O ventilador solto mudava a divisão da
-  vibração entre os eixos sem mudar o total; o detector passou a usar só totais.
-- **Detector de duas bases.** Linha de base adaptativa com as proteções contra
-  aprender a falha, referência fixa da instalação e pedido de investigação. O
-  Isolation Forest padrão do scikit-learn foi combinado com a régua robusta porque a
-  nota dele satura longe do normal, e ganhou as regras de duas janelas e 3 desvios
-  depois de alarmes falsos nos testes ao vivo.
-- **Painel completo** com reconexão automática da serial, registro de eventos e modo
-  de reprodução com falha simulada.
-- **Atalhos** (`./gravar`, `./apresentar` etc.) para gravar e apresentar sem digitar
-  comandos longos.
+- Bench tests, with a single fan. A bench fan is not a compressor.
+- The faults in the evaluation are simulated in software; the physical ones only
+  show up in the live tests, with no numbers.
+- The fixed parameters of the detector (table in "Model") were tuned for the
+  bench fan and have not been tested on other machines.
+- The recordings cover minutes, not days. Drift does not become an alarm yet,
+  because separating weather from wear takes days of data and the operating
+  context (current, speed, ambient temperature).
+- At 400 Hz with I²C at 100 kHz, and with no count of FIFO overruns, it is not
+  yet possible to say that the 512 samples of a window are continuous.
+- The tachometer counts too many; the speed comes from the vibration spectrum.
+- MQTT was not implemented; collection depends on USB and the computer.
 
-## Limitações
+## Repository layout
 
-- Ensaios em bancada, com um único ventilador. Ventilador de bancada não é compressor.
-- As falhas da avaliação são simuladas por software; as físicas só aparecem nos testes
-  ao vivo, sem números.
-- Os parâmetros fixos do detector (tabela em "Modelo") foram ajustados para o ventilador
-  da bancada e não foram testados em outras máquinas.
-- As gravações cobrem minutos, não dias. A deriva ainda não vira alarme, porque separar
-  clima de desgaste exige dias de dados e o contexto de operação (corrente, rotação,
-  temperatura ambiente).
-- A 400 Hz com I²C a 100 kHz, e sem contagem de estouros do FIFO, ainda não dá para
-  afirmar que as 512 amostras de uma janela são contínuas.
-- O tacômetro conta a mais; a rotação sai do espectro de vibração.
-- O MQTT não foi implementado; a coleta depende da USB e do computador.
-
-## Organização da pasta
-
-| Pasta | Conteúdo |
+| Folder | Contents |
 |---|---|
-| `firmware/` | Sketch principal do ESP32; os testes da bancada em `tests/` |
-| `analysis/` | Detector, painel, gravação, avaliação e figuras; a primeira versão em `legacy/` |
-| `data/` | As três sessões normais gravadas |
-| `results/` | Avaliação, figuras e vídeos gerados (os vídeos não vão para o Git) |
-| `assets/` | Imagens usadas no README e no artigo |
-| `paper/` | Artigo (`.tex`), tradução de apoio e `refs.bib` |
-| `docs/` | Montagem, decisões, roteiro da apresentação e documentos do processo |
-| `docs/course/` | Materiais da disciplina: lista de compras, retirada de materiais, seminário 1 |
+| `firmware/` | ESP32 acquisition sketch |
+| `analysis/` | Detector, panel, recording, evaluation and figure |
+| `data/` | The three normal recorded sessions |
+| `results/` | Evaluation report and figure |
+| `assets/` | Images used in the article |
+| `paper/` | Article (`.tex`) and `refs.bib` |
+| `docs/` | Bench assembly and design decisions |
 
-## Documentos
+## Documents
 
-| Arquivo | Conteúdo |
+| File | Contents |
 |---|---|
-| `paper/predictive-maintenance.tex` | Artigo, em inglês, no modelo do SBrT |
-| `paper/predictive-maintenance-pt.md` | Tradução de apoio do artigo |
-| `paper/refs.bib` | Referências do artigo e a entrada do repositório |
-| `docs/montagem.md` | Montagem da bancada e roteiro dos ensaios |
-| `docs/roteiro-apresentacao.md` | Roteiro da apresentação da AP1 |
-| `docs/decisoes-do-projeto.md` | Decisões tomadas, com o porquê, e o que está em aberto |
-| `docs/plano-do-prototipo.md` | Plano e lista de materiais |
-| `docs/requirements.md`, `docs/specifications.md` | Requisitos e especificação |
-| `docs/duvidas-professor.md` | Perguntas levadas ao professor e as respostas |
-| `docs/guia-geral.md` | Checklist das atividades da disciplina |
-| `docs/research-notes.md`, `docs/reference-contributions.md` | Notas sobre as referências e a contribuição de cada uma |
+| `paper/predictive-maintenance.tex` | Article, in English, in the SBrT template |
+| `paper/refs.bib` | References of the article and the repository entry |
+| `docs/assembly.md` | Bench assembly and the recording routine |
+| `docs/design-decisions.md` | Decisions taken, with the reason, and what was dropped |
 
-O `.tex` usa os caminhos do projeto no Overleaf (`assets/` e `results/` na mesma
-pasta do arquivo). Para compilar a partir do repositório, copie essas duas pastas
-para dentro de `paper/` ou ajuste os caminhos.
+The `.tex` uses the paths of the Overleaf project (`assets/` and `results/` in
+the same folder as the file). To compile from the repository, copy those two
+folders into `paper/` or adjust the paths.
+
+## License
+
+MIT, see [`LICENSE`](LICENSE).
