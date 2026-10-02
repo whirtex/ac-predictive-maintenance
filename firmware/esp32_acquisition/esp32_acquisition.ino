@@ -33,7 +33,7 @@
 // A rede e a senha ficam em credenciais.h, que nao vai para o
 // repositorio. Copie credenciais.h.exemplo como credenciais.h e
 // preencha antes de gravar.
-#include "credenciais.h"
+#include "credentials.h"
 
 // Fica aqui no topo porque o Arduino gera os prototipos das funcoes
 // antes do resto do codigo, e processarEixo() devolve este tipo.
