@@ -1,6 +1,6 @@
 /*
-  Cadeia de aquisicao na ESP32-WROVER-DEV, para gravar os dados de
-  treino do modelo.
+  Cadeia de aquisicao na ESP32-WROVER-DEV, para gravar as sessoes que
+  alimentam o detector.
 
   A vibracao e o sinal principal do projeto. A cada janela de 512
   amostras (cerca de 1,3 s a 400 Hz) a placa calcula, para cada eixo
@@ -17,16 +17,6 @@
     Tacometro cooler -> GPIO 18   (com resistor de 10 kOhm para 3,3 V)
 
   O tacometro entrega DOIS pulsos por volta, padrao de cooler de PC.
-
-  Rotulagem pela porta serial, durante o ensaio:
-    u B          troca a unidade para B
-    c obstrucao  troca a condicao para obstrucao
-    r 2          troca a repeticao para 2
-    ?            mostra o estado atual
-
-  Sem isso os dados nao servem para classificar: cada linha precisa
-  saber sob qual condicao e em qual repeticao foi gravada. A
-  repeticao e o que separa treino de teste.
 
   Linhas que comecam com # sao comentario e alarme: o pandas ignora
   com comment='#'. O script analysis/legacy/captura_serial.py grava tudo num
@@ -115,10 +105,6 @@ void IRAM_ATTR contarPulso() {
 bool horaValida = false;
 bool adxlOk = false;
 bool inaOk  = false;
-
-char unidade[8]   = "A";
-char condicao[24] = "normal";
-int  repeticao    = 1;
 
 float amostras[3][N_AMOSTRAS];
 int   nAmostras = 0;
@@ -212,50 +198,6 @@ void carimbo(char* destino, size_t tamanho) {
     }
   }
   snprintf(destino, tamanho, "boot+%lu", millis() / 1000);
-}
-
-// --- rotulagem -------------------------------------------------------
-
-void mostrarEstado() {
-  Serial.print("# unidade=");
-  Serial.print(unidade);
-  Serial.print(" condicao=");
-  Serial.print(condicao);
-  Serial.print(" repeticao=");
-  Serial.println(repeticao);
-}
-
-void lerComandos() {
-  if (!Serial.available()) return;
-
-  String linha = Serial.readStringUntil('\n');
-  linha.trim();
-  if (linha.length() == 0) return;
-
-  if (linha == "?") {
-    mostrarEstado();
-    return;
-  }
-
-  if (linha.startsWith("u ")) {
-    linha.substring(2).toCharArray(unidade, sizeof(unidade));
-    mostrarEstado();
-    return;
-  }
-
-  if (linha.startsWith("c ")) {
-    linha.substring(2).toCharArray(condicao, sizeof(condicao));
-    mostrarEstado();
-    return;
-  }
-
-  if (linha.startsWith("r ")) {
-    repeticao = linha.substring(2).toInt();
-    mostrarEstado();
-    return;
-  }
-
-  Serial.println("# comandos: 'u <unidade>', 'c <condicao>', 'r <repeticao>', '?'");
 }
 
 // --- processamento da janela -----------------------------------------
@@ -362,12 +304,6 @@ void emitirJanela() {
 
   Serial.print(data_hora);
   Serial.print(",");
-  Serial.print(unidade);
-  Serial.print(",");
-  Serial.print(condicao);
-  Serial.print(",");
-  Serial.print(repeticao);
-  Serial.print(",");
   Serial.print(taxaHz, 1);
 
   for (int eixo = 0; eixo < 3; eixo++) {
@@ -410,18 +346,15 @@ void setup() {
   inaOk = iniciarIna();
   if (!inaOk) Serial.println("# INA219 ausente: a coluna de corrente sai vazia");
 
-  Serial.println("data_hora,unidade,condicao,repeticao,taxa_hz,"
+  Serial.println("data_hora,taxa_hz,"
                  "x_rms,x_pico,x_curtose,x_fdom,x_adom,"
                  "y_rms,y_pico,y_curtose,y_fdom,y_adom,"
                  "z_rms,z_pico,z_curtose,z_fdom,z_adom,"
                  "corrente_ma,rpm");
-  mostrarEstado();
 }
 
 void loop() {
   static unsigned long ultimoAlarme = 0;
-
-  lerComandos();
 
   if (!adxlOk) {
     if (!iniciarAdxl()) {
