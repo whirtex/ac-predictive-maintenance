@@ -153,16 +153,18 @@ Na primeira vez, prepare o Python: `python3 -m venv .venv` e depois
 **Para a AP1, grave só a operação normal, em três sessões.** Em cada uma:
 
 1. Ligue o ventilador.
-2. Rode `./gravar` e responda o número da sessão: 1, 2 ou 3.
+2. Rode `./gravar` e responda o nome da gravação. Para as três sessões da avaliação,
+   use `rep1`, `rep2` e `rep3`; para gravar em outro lugar, use o nome dele (por
+   exemplo `mesa-b` ou `chao`).
 3. Deixe gravar. O gráfico abre sozinho, e o terminal mostra o tempo e avisa quando
    der 10 minutos.
 4. Aperte `Ctrl+C`. O gráfico fecha junto.
 5. Desligue o ventilador por 1 minuto antes da sessão seguinte.
 
-Não mexa na montagem entre as sessões. Para um teste que não entra no treino,
-responda só Enter no lugar do número: o arquivo vira `data/teste-HHMMSS.csv`. O
-`./gravar` não grava por cima de uma sessão que já existe; para refazer uma,
-apague o `data/repN.csv` dela antes.
+Não mexa na montagem entre as sessões. Para um teste que não entra na avaliação,
+responda só Enter no lugar do nome: o arquivo vira `data/teste-HHMMSS.csv`. O
+`./gravar` não grava por cima de uma gravação que já existe; para refazer uma,
+apague o `data/<nome>.csv` dela antes.
 
 Depois das três, a avaliação do detector roda com
 `.venv/bin/python analysis/avaliar_duas_bases.py`, e os números vão para `results/`.
