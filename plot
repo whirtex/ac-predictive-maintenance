@@ -1,4 +1,4 @@
 #!/bin/sh
-# Mostra a vibracao da placa num grafico e a corrente no canto, ao vivo.
-# Nao grava nada e nao compara com nenhum padrao.
+# Shows the board's vibration on a chart, with the current in the corner, live.
+# It records nothing and compares with no reference.
 cd "$(dirname "$0")" && exec .venv/bin/python analysis/monitor.py
