@@ -140,6 +140,27 @@ O alarme diz qual medida se afastou e quanto ("vibração total: 1,3 vezes o nor
 Se os alarmes cobrem 80% das janelas por 3 minutos, o detector pede investigação e
 não aprende a mudança.
 
+**O que o detector aprende e o que está fixo.** O código não tem nenhum valor fixo de
+vibração. Em cada máquina, o detector aprende sozinho o normal (a mediana e o desvio
+de cada medida), o limiar do Isolation Forest, a faixa da régua e a referência da
+instalação. Já os parâmetros abaixo estão fixos no `adaptativo.py` e foram ajustados
+para o ventilador da bancada:
+
+| Parâmetro | Valor |
+|---|---|
+| Régua | 6 desvios |
+| Desvios para o modelo acusar | 3, em alguma medida, em duas janelas seguidas |
+| Piso do desvio | 3% da mediana |
+| Partida descartada no primeiro aprendizado | 15 s |
+| Aprendizado inicial | 2 min |
+| Reaprendizado | a cada 60 s, com os últimos 10 min |
+| Bloqueio depois de um alarme | 30 s |
+| Pedido de investigação | 80% das janelas em alarme por 3 min |
+
+Esses valores valem para a bancada. Não foram comprovados em outros ar-condicionados,
+e ainda não há um valor geral. O caminho provável é trabalhar com porcentagens que
+sirvam para qualquer máquina, mas isso não está decidido.
+
 **Resultados** (`./.venv/bin/python analysis/avaliar_duas_bases.py`, saída em
 `results/avaliacao_duas_bases.txt`):
 
@@ -219,6 +240,8 @@ O que foi desenvolvido além do uso padrão das bibliotecas e da IDE:
 - Ensaios em bancada, com um único ventilador. Ventilador de bancada não é compressor.
 - As falhas da avaliação são simuladas por software; as físicas só aparecem nos testes
   ao vivo, sem números.
+- Os parâmetros fixos do detector (tabela em "Modelo") foram ajustados para o ventilador
+  da bancada e não foram testados em outras máquinas.
 - As gravações cobrem minutos, não dias. A deriva ainda não vira alarme, porque separar
   clima de desgaste exige dias de dados e o contexto de operação (corrente, rotação,
   temperatura ambiente).
