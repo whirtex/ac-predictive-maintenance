@@ -50,7 +50,7 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
-from formato import TOTAIS, derivar_janela, nome_legivel
+from csv_format import TOTAIS, derivar_janela, nome_legivel
 
 APRENDIZADO_S = 120    # aprendizado inicial no lugar
 ATUALIZA_S = 60        # de quanto em quanto tempo reaprende

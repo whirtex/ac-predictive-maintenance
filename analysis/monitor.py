@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.ticker import FuncFormatter
 
-from formato import COLUNAS
+from csv_format import COLUNAS
 
 JANELA_S = 120
 

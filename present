@@ -7,6 +7,6 @@
 #                        aos 3 minutos, se a placa falhar na hora.
 cd "$(dirname "$0")" || exit 1
 if [ "$1" = "reserva" ]; then
-    exec .venv/bin/python analysis/painel_adaptativo.py --reproduzir data/rep3.csv --falha 180
+    exec .venv/bin/python analysis/adaptive_panel.py --reproduzir data/rep3.csv --falha 180
 fi
-exec .venv/bin/python analysis/painel_adaptativo.py
+exec .venv/bin/python analysis/adaptive_panel.py

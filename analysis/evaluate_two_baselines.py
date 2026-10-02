@@ -33,8 +33,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
 import numpy as np  # noqa: E402
 
-from adaptativo import DetectorAdaptativo  # noqa: E402
-from formato import COLUNAS  # noqa: E402
+from adaptive import DetectorAdaptativo  # noqa: E402
+from csv_format import COLUNAS  # noqa: E402
 
 PASTA = Path(__file__).resolve().parent.parent
 APRENDIZADO_S = 120

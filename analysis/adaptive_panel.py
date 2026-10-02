@@ -40,8 +40,8 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.ticker import FuncFormatter
 
-import adaptativo as A
-from formato import COLUNAS
+import adaptive as A
+from csv_format import COLUNAS
 
 JANELA_S = 180          # quanto do passado os graficos mostram
 SUSTENTADO_S = 2.0      # fora do normal por mais que isso: anomalia continua
