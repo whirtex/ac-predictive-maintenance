@@ -14,7 +14,7 @@ diz isso. Mede:
   4. a mesma coisa com uma base fixa, aprendida uma vez e nunca
      atualizada, para medir o que a adaptacao muda.
 
-Saidas em results/: avaliacao_duas_bases.txt e avaliacao_lenta.png.
+Saidas em results/: two_baseline_evaluation.txt e slow_drift_evaluation.png.
 
 Uso (na pasta predictive-maintenance):
     .venv/bin/python analysis/avaliar_duas_bases.py
@@ -182,9 +182,9 @@ def main():
     ax.legend(frameon=False, ncol=4, loc="lower left", bbox_to_anchor=(0, 1.0), fontsize=8)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
     fig.tight_layout()
-    fig.savefig(PASTA / "results" / "avaliacao_lenta.png", dpi=200)
+    fig.savefig(PASTA / "results" / "slow_drift_evaluation.png", dpi=200)
     plt.close(fig)
-    print("\nfigura: results/avaliacao_lenta.png (1,5% por minuto)")
+    print("\nfigura: results/slow_drift_evaluation.png (1,5% por minuto)")
 
 
 if __name__ == "__main__":
@@ -193,5 +193,5 @@ if __name__ == "__main__":
         main()
     texto = buffer.getvalue()
     (PASTA / "results").mkdir(exist_ok=True)
-    (PASTA / "results" / "avaliacao_duas_bases.txt").write_text(texto, encoding="utf-8")
+    (PASTA / "results" / "two_baseline_evaluation.txt").write_text(texto, encoding="utf-8")
     sys.stdout.write(texto)

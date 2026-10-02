@@ -1,6 +1,6 @@
 """Desenha o diagrama da arquitetura do prototipo para o artigo.
 
-Saida: assets/arquitetura.png, em ingles como o artigo, na largura de uma
+Saida: assets/architecture.png, em ingles como o artigo, na largura de uma
 coluna do SBrT.
 
 Uso (na pasta predictive-maintenance):
@@ -59,7 +59,7 @@ def main():
     ax.text(7.05 + (2.35 + LARGURA) / 2, -0.3, "remote (laptop)",
             ha="center", fontsize=5.4, color=TINTA_2, style="italic")
     fig.tight_layout(pad=0.1)
-    destino = PASTA / "assets" / "arquitetura.png"
+    destino = PASTA / "assets" / "architecture.png"
     fig.savefig(destino, dpi=300)
     plt.close(fig)
     print(destino.relative_to(PASTA))
