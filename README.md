@@ -109,7 +109,7 @@ O firmware configura o ADXL345 para 400 Hz, com o FIFO em modo stream, e forma
 janelas de 512 amostras (~1,23 s a 417 Hz medidos). Para cada eixo calcula RMS
 (sem a média), pico, curtose e, com janela de Hann e FFT de 512 pontos, a frequência
 dominante e a amplitude dela. Corrente (média da janela) e rotação saem como colunas
-adicionais. São 22 colunas por linha.
+adicionais. São 19 colunas por linha.
 
 ## Modelo: detector de duas bases
 
@@ -169,7 +169,7 @@ serial da Arduino IDE. Depois, os atalhos:
 |---|---|
 | `./apresentar` | Painel completo do detector de duas bases, ao vivo. Tecla `M` mostra a nota do modelo |
 | `./apresentar reserva` | Toca a sessão 3 com uma falha simulada aos 3 min, se a placa falhar na hora |
-| `./gravar` | Pergunta a sessão (1, 2, 3 ou Enter para teste) e grava em `data/` com gráfico ao vivo |
+| `./gravar` | Pergunta o nome da gravação (o lugar do cooler, ou Enter para teste) e grava em `data/` com gráfico ao vivo |
 | `./grafico` | Só o gráfico da vibração, com a corrente no canto |
 
 A primeira versão, com o modelo treinado uma vez, não tem atalho. Ela roda direto
@@ -194,8 +194,6 @@ O que foi desenvolvido além do uso padrão das bibliotecas e da IDE:
   amplitude e frequência conhecidas.
 - **Taxa estimada por janela.** A conversão para Hz usa a duração medida pelo ESP32
   (417 Hz na bancada, não os 400 nominais).
-- **Rotulagem durante a gravação.** Comandos pela serial (`u`, `c`, `r`) gravam em
-  cada linha a unidade, a condição e a repetição.
 - **Hora por NTP em vez de relógio externo.** O módulo DS1302 foi descartado depois
   de medido: contava seis vezes mais rápido que o tempo real.
 - **Avisos de falha de sensor.** Linhas `# ALARME` quando o ADXL345 ou o INA219 param
