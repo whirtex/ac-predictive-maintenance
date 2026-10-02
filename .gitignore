@@ -1,0 +1,16 @@
+.DS_Store
+
+# Wi-Fi credentials for the firmware: this repository is public
+firmware/**/credentials.h
+
+# local Python environment
+.venv/
+__pycache__/
+
+# videos are generated locally and are too heavy for the repository
+*.mp4
+*.mov
+*.MOV
+*.m4v
+*.webm
+*.avi
