@@ -1,16 +1,16 @@
-"""Grava uma sessao do cooler, do jeito mais simples possivel.
+"""Records a fan session in the simplest way possible.
 
-Use pelo atalho ./gravar, na pasta predictive-maintenance. Ele:
+Use it through the ./record shortcut, in the repository root. It:
 
-  1. acha a porta da placa sozinho;
-  2. pergunta o nome da gravacao, que e o lugar onde o cooler esta (por
-     exemplo mesa-a, mesa-b ou chao), ou Enter para um teste;
-  3. grava em data/<nome>.csv (ou data/teste-HHMMSS.csv) e se recusa a
-     gravar por cima de um arquivo que ja existe;
-  4. abre o grafico da vibracao e da corrente numa janela separada;
-  5. mostra o tempo e avisa quando der 10 minutos.
+  1. finds the board's port by itself;
+  2. asks for the name of the recording, which is the place where the fan
+     sits (for example table-a, table-b or floor), or Enter for a test;
+  3. records to data/<name>.csv (or data/test-HHMMSS.csv) and refuses to
+     overwrite a file that already exists;
+  4. opens the vibration and current chart in a separate window;
+  5. shows the elapsed time and warns at 10 minutes.
 
-Ctrl+C encerra a gravacao e fecha o grafico.
+Ctrl+C stops the recording and closes the chart.
 """
 
 import glob
@@ -24,96 +24,96 @@ from datetime import datetime
 
 import serial
 
-PASTA = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DURACAO_SUGERIDA_S = 10 * 60
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SUGGESTED_DURATION_S = 10 * 60
 
 
-def achar_porta():
-    portas = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/cu.SLAB*")
-                    + glob.glob("/dev/cu.wchusbserial*"))
-    if not portas:
-        print("A placa não foi encontrada. Confira o cabo USB e tente de novo.")
+def find_port():
+    ports = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/cu.SLAB*")
+                   + glob.glob("/dev/cu.wchusbserial*"))
+    if not ports:
+        print("The board was not found. Check the USB cable and try again.")
         sys.exit(1)
-    return portas[0]
+    return ports[0]
 
 
-def escolher_arquivo():
-    resposta = input("Nome da gravação, o lugar do cooler (ex.: mesa-a, chao), "
-                     "ou só Enter para um teste: ").strip()
-    if resposta == "":
-        return os.path.join(PASTA, "data", f"teste-{datetime.now():%H%M%S}.csv")
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", resposta):
-        print("Use só letras, números, - e _ no nome.")
+def choose_file():
+    answer = input("Recording name, the place of the fan (e.g. table-a, floor), "
+                   "or just Enter for a test: ").strip()
+    if answer == "":
+        return os.path.join(ROOT, "data", f"test-{datetime.now():%H%M%S}.csv")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", answer):
+        print("Use only letters, numbers, - and _ in the name.")
         sys.exit(1)
-    caminho = os.path.join(PASTA, "data", f"{resposta}.csv")
-    if os.path.exists(caminho):
-        print(f"Já existe uma gravação com esse nome (data/{resposta}.csv).")
-        print("Escolha outro nome, ou apague esse arquivo antes.")
+    path = os.path.join(ROOT, "data", f"{answer}.csv")
+    if os.path.exists(path):
+        print(f"A recording with that name already exists (data/{answer}.csv).")
+        print("Choose another name, or delete that file first.")
         sys.exit(1)
-    return caminho
+    return path
 
 
 def main():
-    caminho_porta = achar_porta()
-    caminho = escolher_arquivo()
-    os.makedirs(os.path.dirname(caminho), exist_ok=True)
-    relativo = os.path.relpath(caminho, PASTA)
+    port_path = find_port()
+    path = choose_file()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    relative = os.path.relpath(path, ROOT)
 
-    porta = serial.Serial(caminho_porta, 115200, timeout=1)
-    porta.reset_input_buffer()
-    porta.readline()   # a primeira linha pode chegar cortada
+    port = serial.Serial(port_path, 115200, timeout=1)
+    port.reset_input_buffer()
+    port.readline()   # the first line may arrive cut off
 
-    # O grafico roda num processo proprio: se ele travar ou for fechado,
-    # a gravacao continua.
-    grafico = subprocess.Popen(
-        [sys.executable, os.path.join(PASTA, "analysis", "monitor.py"), "--seguir", caminho],
+    # The chart runs in its own process: if it hangs or is closed, the
+    # recording goes on.
+    chart = subprocess.Popen(
+        [sys.executable, os.path.join(ROOT, "analysis", "monitor.py"), "--follow", path],
         start_new_session=True)
 
-    print(f"\nGravando em {relativo}. Ctrl+C para parar.\n")
+    print(f"\nRecording to {relative}. Ctrl+C to stop.\n")
 
-    inicio = time.monotonic()
-    janelas = 0
-    avisou = False
-    avisou_silencio = False
-    with open(caminho, "a", encoding="utf-8") as saida:
+    start = time.monotonic()
+    windows = 0
+    warned = False
+    warned_silence = False
+    with open(path, "a", encoding="utf-8") as out:
         try:
             while True:
-                bruta = porta.readline()
-                if not bruta:
-                    if (janelas == 0 and not avisou_silencio
-                            and time.monotonic() - inicio > 30):
-                        avisou_silencio = True
-                        print("  A placa não mandou nada em 30 s. Aperte o botão EN do ESP32"
-                              " e espere uns 20 s; se nada mudar, pare com Ctrl+C.")
+                raw = port.readline()
+                if not raw:
+                    if (windows == 0 and not warned_silence
+                            and time.monotonic() - start > 30):
+                        warned_silence = True
+                        print("  The board sent nothing in 30 s. Press the EN button on the ESP32"
+                              " and wait about 20 s; if nothing changes, stop with Ctrl+C.")
                     continue
-                texto = bruta.decode(errors="replace").rstrip("\r\n")
-                saida.write(texto + "\n")
-                saida.flush()
+                text = raw.decode(errors="replace").rstrip("\r\n")
+                out.write(text + "\n")
+                out.flush()
 
-                if texto.startswith("#"):
-                    if "ALARME" in texto:
-                        print(texto)
+                if text.startswith("#"):
+                    if "ALARM" in text:
+                        print(text)
                     continue
 
-                janelas += 1
-                decorrido = time.monotonic() - inicio
-                minutos, segundos = divmod(int(decorrido), 60)
-                print(f"\r  {minutos:02d}:{segundos:02d}   {janelas} janelas", end="", flush=True)
-                if decorrido >= DURACAO_SUGERIDA_S and not avisou:
-                    avisou = True
-                    print("\a\n  10 minutos! Pode parar com Ctrl+C.")
+                windows += 1
+                elapsed = time.monotonic() - start
+                minutes, seconds = divmod(int(elapsed), 60)
+                print(f"\r  {minutes:02d}:{seconds:02d}   {windows} windows", end="", flush=True)
+                if elapsed >= SUGGESTED_DURATION_S and not warned:
+                    warned = True
+                    print("\a\n  10 minutes! You can stop with Ctrl+C.")
         except KeyboardInterrupt:
             pass
 
-    grafico.send_signal(signal.SIGTERM)
-    if janelas == 0:
-        # Arquivo vazio nao pode ocupar o nome da gravacao.
-        os.remove(caminho)
-        print("\n\nNada foi gravado, e o arquivo vazio foi apagado. Confira a placa e"
-              " rode ./gravar de novo.")
+    chart.send_signal(signal.SIGTERM)
+    if windows == 0:
+        # An empty file must not hold the name of the recording.
+        os.remove(path)
+        print("\n\nNothing was recorded, and the empty file was deleted. Check the board and"
+              " run ./record again.")
         return
-    print(f"\n\nPronto: {janelas} janelas em {relativo}.")
-    print("Para gravar em outro lugar, mude o cooler de lugar e rode ./gravar de novo.")
+    print(f"\n\nDone: {windows} windows in {relative}.")
+    print("To record in another place, move the fan and run ./record again.")
 
 
 if __name__ == "__main__":
