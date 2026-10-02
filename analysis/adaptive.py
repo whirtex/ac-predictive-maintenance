@@ -1,46 +1,47 @@
-"""Detector adaptativo: aprende o normal no lugar e vai se atualizando.
+"""Adaptive detector: learns what is normal in place and keeps updating it.
 
-Um modelo treinado uma vez so fica velho quando o lugar ou as condicoes
-mudam. Na bancada, o mesmo ventilador vibrou ~0,15 g numa mesa e
-~0,10 g em outra, uma diferenca maior que a de uma obstrucao. E o
-motor aquecendo muda a vibracao devagar por mais de 20 minutos.
+A model trained once goes stale when the place or the conditions change. On
+the bench, the same fan vibrated about 0.15 g on one table and about 0.10 g on
+another, a bigger difference than an obstruction would cause. A warming motor
+also changes the vibration slowly over more than 20 minutes.
 
-Por isso este detector:
+So this detector:
 
-  1. passa APRENDIZADO_S aprendendo o normal do lugar onde esta;
-  2. depois detecta. Cada janela passa por duas perguntas, e basta uma
-     dizer que nao esta normal para virar alarme:
-       - o Isolation Forest, sobre as 5 medidas totais (formato.TOTAIS),
-         responde se a combinacao parece com o normal;
-       - a regua responde se a vibracao total, o pico ou a forca da
-         frequencia dominante se afastaram mais de REGUA desvios do
-         normal. O Isolation Forest diz se um ponto e estranho, mas nao
-         quao estranho: longe do normal, a nota dele satura, e uma
-         vibracao 30% mais forte chegou a ficar colada no limiar;
-     O Isolation Forest sozinho so vira alarme se marcar duas janelas
-     seguidas e se alguma medida estiver a pelo menos Z_MINIMO_MODELO
-     desvios do normal. Ao vivo, com o normal aprendido muito apertado,
-     ele acusava oscilacoes de 1,7 a 2,8 desvios, do tamanho do ruido. A regua dispara na hora, porque pega os impactos fortes;
-  3. a cada ATUALIZA_S, reaprende com os ultimos MEMORIA_S de janelas
-     normais. Mudanca lenta, como o aquecimento ou o clima do dia, entra
-     no normal. Mudanca rapida, como uma obstrucao, vira alarme.
+  1. spends LEARNING_S learning what is normal where it sits;
+  2. then detects. Each window goes through two tests, and one of them is
+     enough to raise an alarm:
+       - the Isolation Forest, over the 5 total measures (csv_format.TOTALS),
+         says whether the combination looks normal;
+       - the ruler says whether the total vibration, the peak or the strength
+         of the dominant frequency moved more than RULER deviations away from
+         normal. The Isolation Forest says whether a point is odd, but not how
+         odd: far from normal its score saturates, and a vibration 30% higher
+         once sat right at the threshold;
+     The Isolation Forest alone raises an alarm only if it flags two windows
+     in a row and some measure is at least MIN_Z_MODEL deviations from
+     normal. Live, with a very tight normal, it flagged swings of 1.7 to 2.8
+     deviations, about the size of the noise. The ruler fires at once, because
+     it catches strong impacts;
+  3. every UPDATE_S, relearns from the last MEMORY_S of normal windows. A slow
+     change, such as warm-up or the weather of the day, enters the normal. A
+     fast change, such as an obstruction, becomes an alarm.
 
-O risco de quem se adapta e se acostumar com uma falha que cresce
-devagar. As protecoes:
+The risk of an adaptive detector is getting used to a fault that grows
+slowly. The protections:
 
-  - janela marcada como anomala nunca entra no normal, nem as dos
-    BLOQUEIO_S seguintes a um alarme;
-  - enquanto houver alarme recente, o modelo nao se atualiza;
-  - os ultimos ATRASO_S ficam fora de cada reaprendizado, para o comeco
-    de uma falha, antes de ser marcado, nao entrar no normal;
-  - a referencia do primeiro aprendizado fica guardada, e o detector
-    informa quanto o normal atual ja se afastou dela (deriva). Um
-    desgaste lento aparece ai, mesmo que o modelo tenha se acostumado.
+  - a window flagged as abnormal never enters the normal, nor do the windows
+    of the BLOCK_S after an alarm;
+  - while there is a recent alarm, the model does not update;
+  - the last DELAY_S are left out of each relearning, so the start of a fault,
+    before it gets flagged, does not enter the normal;
+  - the reference from the first learning is kept, and the detector reports
+    how far the current normal has moved from it (drift). A slow wear shows up
+    there even if the model got used to it.
 
-O sistema sozinho nao distingue uma falha persistente de uma mudanca
-legitima de posicao. Apos 3 minutos de alarme persistente, ele pede
-investigacao e mantem a referencia anterior. A adaptacao automatica
-continua apenas com leituras consideradas normais.
+The system alone cannot tell a persistent fault from a legitimate change of
+position. After 3 minutes of persistent alarm, it asks for an inspection and
+keeps the previous reference. Automatic adaptation continues only with
+readings considered normal.
 """
 
 from collections import deque
@@ -50,211 +51,213 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
-from csv_format import TOTAIS, derivar_janela, nome_legivel
+from csv_format import TOTALS, derive_window, readable_name
 
-APRENDIZADO_S = 120    # aprendizado inicial no lugar
-ATUALIZA_S = 60        # de quanto em quanto tempo reaprende
-MEMORIA_S = 600        # quanto do passado recente entra no normal
-BLOQUEIO_S = 30        # depois de um alarme, nao aprende por esse tempo
-ATRASO_S = 30          # o passado mais recente fica fora do reaprendizado
-QUANTIL = 0.002        # fracao do normal recente que ficaria abaixo do limiar
-REGUA = 6              # desvios que a regua tolera
-Z_MINIMO_MODELO = 3    # o modelo so acusa se alguma medida passar disso
-PISO = 0.03            # o desvio nunca conta como menor que 3% da media
-MINIMO_JANELAS = 40    # abaixo disso nao ha dado suficiente para treinar
-PERSISTENCIA_S = 180   # tempo minimo antes de pedir investigacao
-FRACAO_PERSISTENTE = 0.8  # fracao minima de janelas em alerta nesse tempo
-MINIMO_JANELAS_PERSISTENCIA = 100
-INTERVALO_SEM_ALERTA_S = 10  # pausa maior encerra o episodio persistente
-PARTIDA_S = 15         # comeco de cada aprendizado do zero fica de fora: e a
-                       # partida do motor, com trancos que alargam o normal
+LEARNING_S = 120       # initial learning in place
+UPDATE_S = 60          # how often it relearns
+MEMORY_S = 600         # how much of the recent past enters the normal
+BLOCK_S = 30           # after an alarm, it does not learn for this long
+DELAY_S = 30           # the most recent past stays out of the relearning
+QUANTILE = 0.002       # fraction of the recent normal that would fall below the threshold
+RULER = 6              # deviations the ruler tolerates
+MIN_Z_MODEL = 3        # the model only raises an alarm if some measure passes this
+FLOOR = 0.03           # the deviation never counts as less than 3% of the mean
+MIN_WINDOWS = 40       # below this there is not enough data to train
+PERSISTENCE_S = 180    # minimum time before asking for an inspection
+PERSISTENT_FRACTION = 0.8  # minimum fraction of windows in alert within that time
+MIN_PERSISTENCE_WINDOWS = 100
+QUIET_GAP_S = 10       # a longer pause ends the persistent episode
+STARTUP_S = 15         # the start of every learning from scratch is left out: it is
+                       # the motor start-up, with jolts that widen the normal
 
-# Medidas que a regua vigia: as de intensidade. Curtose e frequencia
-# ficam so com o Isolation Forest.
-MEDIDAS_REGUA = ["rms_total", "pico_total", "adom_total"]
+# Measures the ruler watches: the intensity ones. Kurtosis and frequency are
+# left to the Isolation Forest alone.
+RULER_MEASURES = ["rms_total", "peak_total", "domamp_total"]
 
 
-def descrever(chave, z, valor, media):
-    """Frase curta sobre o quanto uma medida se afastou do normal.
+def describe(key, z, value, mean):
+    """Short sentence about how far a measure moved from normal.
 
-    Longe do normal, desvios viram numeros sem sentido (uma batida leva a
-    curtose de 2 para 90, ou mais de mil desvios); ai a frase usa quantas
-    vezes o normal.
+    Far from normal, deviations turn into meaningless numbers (one knock takes
+    the kurtosis from 2 to 90, more than a thousand deviations); then the
+    sentence uses how many times the normal instead.
     """
-    nome = nome_legivel(chave)
-    if abs(z) > 20 and media > 0:
-        vezes = valor / media
-        texto = f"{nome}: {vezes:.1f} vezes o normal" if vezes >= 1 else \
-                f"{nome}: {100 * (1 - vezes):.0f}% abaixo do normal"
+    name = readable_name(key)
+    if abs(z) > 20 and mean > 0:
+        times = value / mean
+        text = f"{name}: {times:.1f} times normal" if times >= 1 else \
+               f"{name}: {100 * (1 - times):.0f}% below normal"
     else:
-        sentido = "acima" if z > 0 else "abaixo"
-        texto = f"{nome}: {abs(z):.1f} desvios {sentido} do normal"
-    return texto.replace(".", ",")
+        direction = "above" if z > 0 else "below"
+        text = f"{name}: {abs(z):.1f} deviations {direction} normal"
+    return text
 
 
-class DetectorAdaptativo:
-    def __init__(self, aprendizado_s=APRENDIZADO_S, atualiza_s=ATUALIZA_S,
-                 memoria_s=MEMORIA_S, bloqueio_s=BLOQUEIO_S, quantil=QUANTIL):
-        self.aprendizado_s = aprendizado_s
-        self.atualiza_s = atualiza_s
-        self.memoria_s = memoria_s
-        self.bloqueio_s = bloqueio_s
-        self.quantil = quantil
-        self.janelas = deque()   # [t, medidas, pode_aprender]
-        self.modelo = None
-        self.inicio = None
-        self.ultima_atualizacao = None
-        self.bloqueio_ate = float("-inf")
-        self.referencia = None   # vibracao total media do primeiro aprendizado
-        self.atualizacoes = []   # uma entrada por (re)aprendizado
-        self.modelo_anterior = False   # o Isolation Forest marcou a janela anterior?
-        self.inicio_alerta = None
-        self.ultimo_alerta = None
-        self.alertas_recentes = deque()  # (t, fora), durante a mudanca persistente
-        self.investigar = False
+class AdaptiveDetector:
+    def __init__(self, learning_s=LEARNING_S, update_s=UPDATE_S,
+                 memory_s=MEMORY_S, block_s=BLOCK_S, quantile=QUANTILE):
+        self.learning_s = learning_s
+        self.update_s = update_s
+        self.memory_s = memory_s
+        self.block_s = block_s
+        self.quantile = quantile
+        self.windows = deque()   # [t, measures, can_learn]
+        self.model = None
+        self.start = None
+        self.last_update = None
+        self.block_until = float("-inf")
+        self.reference = None    # mean total vibration of the first learning
+        self.updates = []        # one entry per (re)learning
+        self.model_flagged_before = False   # did the Isolation Forest flag the previous window?
+        self.alert_start = None
+        self.last_alert = None
+        self.recent_alerts = deque()  # (t, outside), during the persistent change
+        self.investigate = False
 
-    def _mudanca_persistente(self, t, fora):
-        """Sinaliza uma unica vez quando um alarme exige investigacao."""
-        if fora:
-            if self.inicio_alerta is None:
-                self.inicio_alerta = t
-            self.ultimo_alerta = t
-        elif self.ultimo_alerta is not None and t - self.ultimo_alerta > INTERVALO_SEM_ALERTA_S:
-            self.inicio_alerta = None
-            self.ultimo_alerta = None
-            self.alertas_recentes.clear()
-            self.investigar = False
+    def _persistent_change(self, t, outside):
+        """Signals once when an alarm calls for an inspection."""
+        if outside:
+            if self.alert_start is None:
+                self.alert_start = t
+            self.last_alert = t
+        elif self.last_alert is not None and t - self.last_alert > QUIET_GAP_S:
+            self.alert_start = None
+            self.last_alert = None
+            self.recent_alerts.clear()
+            self.investigate = False
 
-        if self.inicio_alerta is None:
+        if self.alert_start is None:
             return False
-        self.alertas_recentes.append((t, fora))
-        while self.alertas_recentes and self.alertas_recentes[0][0] < t - PERSISTENCIA_S:
-            self.alertas_recentes.popleft()
-        persistente = (fora and t - self.inicio_alerta >= PERSISTENCIA_S
-                       and len(self.alertas_recentes) >= MINIMO_JANELAS_PERSISTENCIA
-                       and sum(alarme for _, alarme in self.alertas_recentes)
-                       / len(self.alertas_recentes) >= FRACAO_PERSISTENTE)
-        nova_escalada = persistente and not self.investigar
-        if persistente:
-            self.investigar = True
-        return nova_escalada
+        self.recent_alerts.append((t, outside))
+        while self.recent_alerts and self.recent_alerts[0][0] < t - PERSISTENCE_S:
+            self.recent_alerts.popleft()
+        persistent = (outside and t - self.alert_start >= PERSISTENCE_S
+                      and len(self.recent_alerts) >= MIN_PERSISTENCE_WINDOWS
+                      and sum(alarm for _, alarm in self.recent_alerts)
+                      / len(self.recent_alerts) >= PERSISTENT_FRACTION)
+        new_escalation = persistent and not self.investigate
+        if persistent:
+            self.investigate = True
+        return new_escalation
 
-    def _treinar(self, t):
-        uteis = [x for tt, x, ok in self.janelas
-                 if ok and t - self.memoria_s <= tt <= t - ATRASO_S]
-        if self.modelo is None:
-            # no aprendizado do zero ainda nao ha alarme: usa tudo menos a partida
-            uteis = [x for tt, x, ok in self.janelas if ok]
-        if len(uteis) < MINIMO_JANELAS:
+    def _train(self, t):
+        useful = [x for tt, x, ok in self.windows
+                  if ok and t - self.memory_s <= tt <= t - DELAY_S]
+        if self.model is None:
+            # in the learning from scratch there is no alarm yet: use everything but the start-up
+            useful = [x for tt, x, ok in self.windows if ok]
+        if len(useful) < MIN_WINDOWS:
             return False
-        tabela = pd.DataFrame(uteis, columns=TOTAIS)
-        escala = StandardScaler().fit(tabela)
-        floresta = IsolationForest(n_estimators=150, random_state=0)
-        floresta.fit(escala.transform(tabela))
-        pontos = floresta.score_samples(escala.transform(tabela))
-        # Centro e variacao robustos: mediana e desvio absoluto mediano
-        # (MAD, convertido para a escala do desvio padrao). Um trecho curto
-        # de trancos, como a partida do motor, nao desloca a mediana nem
-        # alarga o MAD, ao contrario da media e do desvio padrao: ao vivo,
-        # a partida no aprendizado deixou a regua 51% acima do normal.
-        media = tabela.median()
-        mad = 1.4826 * (tabela - media).abs().median()
-        desvio = np.maximum(mad.fillna(0), PISO * media.abs())
-        anterior = self.modelo["rms_media"] if self.modelo else None
-        tipo = "atualizacao" if self.modelo else "inicial"
-        self.modelo = {
-            "escala": escala,
-            "floresta": floresta,
-            "limiar": float(np.quantile(pontos, self.quantil)),
-            "media": media,
-            "desvio": desvio.replace(0, np.nan),
-            "rms_media": float(media["rms_total"]),
-            "rms_desvio": float(mad["rms_total"]),
+        table = pd.DataFrame(useful, columns=TOTALS)
+        scaler = StandardScaler().fit(table)
+        forest = IsolationForest(n_estimators=150, random_state=0)
+        forest.fit(scaler.transform(table))
+        scores = forest.score_samples(scaler.transform(table))
+        # Robust center and spread: the median and the median absolute
+        # deviation (MAD, converted to the scale of the standard deviation). A
+        # short run of jolts, such as the motor start-up, does not move the
+        # median or widen the MAD, unlike the mean and the standard
+        # deviation: live, the start-up inside the learning left the ruler
+        # 51% above normal.
+        mean = table.median()
+        mad = 1.4826 * (table - mean).abs().median()
+        dev = np.maximum(mad.fillna(0), FLOOR * mean.abs())
+        previous = self.model["rms_mean"] if self.model else None
+        kind = "update" if self.model else "initial"
+        self.model = {
+            "scaler": scaler,
+            "forest": forest,
+            "threshold": float(np.quantile(scores, self.quantile)),
+            "mean": mean,
+            "dev": dev.replace(0, np.nan),
+            "rms_mean": float(mean["rms_total"]),
+            "rms_dev": float(mad["rms_total"]),
         }
-        if self.referencia is None:
-            self.referencia = self.modelo["rms_media"]
-        self.ultima_atualizacao = t
-        self.atualizacoes.append({
+        if self.reference is None:
+            self.reference = self.model["rms_mean"]
+        self.last_update = t
+        self.updates.append({
             "t": t,
-            "tipo": tipo,
-            "rms_media": self.modelo["rms_media"],
-            "rms_desvio": self.modelo["rms_desvio"],
-            "regua": self.modelo["rms_media"] + REGUA * float(desvio["rms_total"]),
-            "limite": -self.modelo["limiar"],
-            "janelas": len(uteis),
-            "mudanca": None if anterior is None else 100 * (self.modelo["rms_media"] / anterior - 1),
-            "deriva": 100 * (self.modelo["rms_media"] / self.referencia - 1),
+            "kind": kind,
+            "rms_mean": self.model["rms_mean"],
+            "rms_dev": self.model["rms_dev"],
+            "ruler": self.model["rms_mean"] + RULER * float(dev["rms_total"]),
+            "limit": -self.model["threshold"],
+            "windows": len(useful),
+            "change": None if previous is None else 100 * (self.model["rms_mean"] / previous - 1),
+            "drift": 100 * (self.model["rms_mean"] / self.reference - 1),
         })
         return True
 
-    def _podar(self, t):
-        while self.janelas and self.janelas[0][0] < t - self.memoria_s:
-            self.janelas.popleft()
+    def _prune(self, t):
+        while self.windows and self.windows[0][0] < t - self.memory_s:
+            self.windows.popleft()
 
-    def adicionar(self, t, janela):
-        """Recebe uma janela (dicionario com as colunas do CSV) no instante t.
+    def add(self, t, window):
+        """Takes one window (a dictionary with the CSV columns) at time t.
 
-        Devolve um dicionario com a fase ('aprendendo' ou 'detectando') e,
-        na deteccao, se a janela esta fora do normal, o grau de anomalia,
-        o limite, a medida mais afastada e a deriva desde a instalacao.
+        Returns a dictionary with the phase ('learning' or 'detecting') and,
+        while detecting, whether the window is outside the normal, the degree
+        of anomaly, the limit, the measure that moved the most and the drift
+        since the installation.
         """
-        medidas = derivar_janela(janela)
-        x = [medidas[c] for c in TOTAIS]
-        if self.inicio is None:
-            self.inicio = t
+        measures = derive_window(window)
+        x = [measures[c] for c in TOTALS]
+        if self.start is None:
+            self.start = t
 
-        if self.modelo is None:
-            self.janelas.append([t, x, t - self.inicio >= PARTIDA_S])
-            self._podar(t)
-            if t - self.inicio >= self.aprendizado_s:
-                self._treinar(t)
-            return {"fase": "aprendendo", "medidas": medidas,
-                    "falta": max(0.0, self.aprendizado_s - (t - self.inicio))}
+        if self.model is None:
+            self.windows.append([t, x, t - self.start >= STARTUP_S])
+            self._prune(t)
+            if t - self.start >= self.learning_s:
+                self._train(t)
+            return {"phase": "learning", "measures": measures,
+                    "remaining": max(0.0, self.learning_s - (t - self.start))}
 
-        m = self.modelo
-        tabela = pd.DataFrame([x], columns=TOTAIS)
-        pontuacao = float(m["floresta"].score_samples(m["escala"].transform(tabela))[0])
-        z = ((tabela.iloc[0] - m["media"]) / m["desvio"]).fillna(0)
-        modelo_agora = pontuacao < m["limiar"]
-        pelo_modelo = (modelo_agora and self.modelo_anterior
-                       and bool((z.abs() >= Z_MINIMO_MODELO).any()))
-        self.modelo_anterior = modelo_agora
-        pela_regua = bool((z[MEDIDAS_REGUA].abs() > REGUA).any())
-        fora = pelo_modelo or pela_regua
-        motivo = " e ".join(n for n, v in (("modelo", pelo_modelo), ("régua", pela_regua)) if v)
+        m = self.model
+        table = pd.DataFrame([x], columns=TOTALS)
+        score = float(m["forest"].score_samples(m["scaler"].transform(table))[0])
+        z = ((table.iloc[0] - m["mean"]) / m["dev"]).fillna(0)
+        model_now = score < m["threshold"]
+        by_model = (model_now and self.model_flagged_before
+                    and bool((z.abs() >= MIN_Z_MODEL).any()))
+        self.model_flagged_before = model_now
+        by_ruler = bool((z[RULER_MEASURES].abs() > RULER).any())
+        outside = by_model or by_ruler
+        reason = " and ".join(n for n, v in (("model", by_model), ("ruler", by_ruler)) if v)
 
-        # O texto mostra a medida que disparou: se foi a regua, a mais
-        # afastada entre as que ela vigia; se foi so o modelo, a mais
-        # afastada de todas.
-        candidatas = z[MEDIDAS_REGUA] if pela_regua else z
-        chave = candidatas.abs().idxmax()
-        detalhe = descrever(chave, z[chave], medidas[chave], m["media"][chave])
+        # The text shows the measure that fired: if it was the ruler, the one
+        # that moved the most among those it watches; if it was only the
+        # model, the one that moved the most overall.
+        candidates = z[RULER_MEASURES] if by_ruler else z
+        key = candidates.abs().idxmax()
+        detail = describe(key, z[key], measures[key], m["mean"][key])
 
-        if fora:
-            self.bloqueio_ate = t + self.bloqueio_s
-        nova_escalada = self._mudanca_persistente(t, fora)
-        # So o que virou alarme fica fora do normal. Uma mudanca pequena, que
-        # o modelo estranha mas nao chega a alarme, entra e e absorvida:
-        # antes, o ventilador solto que mudou 5% de posicao ficava minutos
-        # sendo acusado sem nunca ser aprendido.
-        self.janelas.append([t, x, (not fora) and t >= self.bloqueio_ate])
-        self._podar(t)
-        if t - self.ultima_atualizacao >= self.atualiza_s and t >= self.bloqueio_ate:
-            self._treinar(t)
+        if outside:
+            self.block_until = t + self.block_s
+        new_escalation = self._persistent_change(t, outside)
+        # Only what became an alarm stays out of the normal. A small change
+        # that the model finds odd but that does not reach an alarm enters and
+        # gets absorbed: before, a fan that came loose and moved 5% in
+        # position was flagged for minutes without ever being learned.
+        self.windows.append([t, x, (not outside) and t >= self.block_until])
+        self._prune(t)
+        if t - self.last_update >= self.update_s and t >= self.block_until:
+            self._train(t)
 
         return {
-            "fase": "detectando",
-            "medidas": medidas,
-            "fora": fora,
-            "investigar": self.investigar,
-            "nova_escalada": nova_escalada,
-            "tempo_alerta_s": t - self.inicio_alerta if self.investigar else None,
-            "motivo": motivo,
-            "anomalia": -pontuacao,
-            "limite": -m["limiar"],
-            "detalhe": detalhe,
-            "rms_media": m["rms_media"],
-            "rms_desvio": m["rms_desvio"],
-            "regua": m["rms_media"] + REGUA * float(m["desvio"]["rms_total"]),
-            "deriva": 100 * (m["rms_media"] / self.referencia - 1),
+            "phase": "detecting",
+            "measures": measures,
+            "outside": outside,
+            "investigate": self.investigate,
+            "new_escalation": new_escalation,
+            "alert_time_s": t - self.alert_start if self.investigate else None,
+            "reason": reason,
+            "anomaly": -score,
+            "limit": -m["threshold"],
+            "detail": detail,
+            "rms_mean": m["rms_mean"],
+            "rms_dev": m["rms_dev"],
+            "ruler": m["rms_mean"] + RULER * float(m["dev"]["rms_total"]),
+            "drift": 100 * (m["rms_mean"] / self.reference - 1),
         }
