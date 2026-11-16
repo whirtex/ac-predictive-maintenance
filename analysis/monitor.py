@@ -1,14 +1,14 @@
-"""Simple board monitor: the vibration on a chart and the current in the corner.
+"""Simple board monitor: vibration, current, speed and room climate, live.
 
-It compares nothing, has no reference line and gives no warnings. It only
-shows what esp32_acquisition is measuring right now. Use it through the
-./plot shortcut.
+It compares nothing and has no reference line or warnings. It only shows
+what esp32_acquisition is measuring now, in four charts of the last
+WINDOW_S seconds. Use it through the ./plot shortcut.
 
-With --follow, instead of reading the board, it follows the file that ./record
-is writing. That is how ./record shows the chart.
+With --follow, instead of reading the board, it follows the file that
+./record is writing. That is how ./record shows its chart.
 
-The board can only be read by one program at a time: close the Arduino IDE
-serial monitor, and do not run this together with ./record, which already
+Only one program can read the board at a time: close the Arduino IDE
+serial monitor and do not run it together with ./record, which already
 opens its own chart.
 """
 
@@ -22,22 +22,22 @@ from collections import deque
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from csv_format import COLUMNS
+from csv_format import CLIMATE, COLUMNS, valid_line
 
-WINDOW_S = 120
+WINDOW_S = 600
 
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_2 = "#52514e"
 GRID = "#e4e3df"
-SERIES = "#2a78d6"
+BLUE = "#2a78d6"
+ORANGE = "#e07b00"
+PURPLE = "#7b3fb5"
+RED = "#d62828"
+TEAL = "#0f9b9b"
 
-data = deque()          # (t, vibration, current)
+data = deque()           # (t, {"vib", "cur", "rpm", "temp", "hum"})
 lock = threading.Lock()
-
-
-def num(v, digits):
-    return f"{v:.{digits}f}"
 
 
 def find_port():
@@ -49,18 +49,28 @@ def find_port():
     return ports[0]
 
 
-def parse(line):
-    """Returns (vibration, current) from one esp32_acquisition line."""
-    fields = line.split(",")
-    if len(fields) != len(COLUMNS) or fields[0] == "datetime":
-        return None
-    values = dict(zip(COLUMNS, fields))
+def _number(text):
     try:
-        vibration = math.sqrt(sum(float(values[a + "_rms"]) ** 2 for a in "xyz"))
-        current = float(values["current_ma"]) if values["current_ma"] else None
+        return float(text) if text != "" else None
     except ValueError:
         return None
-    return vibration, current
+
+
+def parse(line):
+    """Returns the measurements of an esp32_acquisition line, or None. Older
+    recordings have no climate: temperature and humidity come out None."""
+    fields = line.split(",")
+    if not valid_line(fields):
+        return None
+    values = dict(zip(COLUMNS + CLIMATE, fields))
+    try:
+        vib = math.sqrt(sum(float(values[a + "_rms"]) ** 2 for a in "xyz"))
+    except ValueError:
+        return None
+    return {"vib": vib, "cur": _number(values["current_ma"]),
+            "rpm": _number(values["rpm"]),
+            "temp": _number(values.get("air_temp_c", "")),
+            "hum": _number(values.get("air_humidity_pct", ""))}
 
 
 def read_board(path):
@@ -71,12 +81,13 @@ def read_board(path):
         line = port.readline().decode(errors="replace").strip()
         reading = parse(line)
         if reading:
-            add(time.monotonic(), *reading)
+            add(time.monotonic(), reading)
 
 
 def follow(path):
-    """Follows a CSV being recorded: what already exists goes in at once, with
-    the time rebuilt from the window duration, and the rest comes in live."""
+    """Follows a CSV being recorded: what already exists comes in at once,
+    with the time rebuilt from the window duration, and the rest comes in
+    live."""
     import os
     while not os.path.exists(path):
         time.sleep(0.5)
@@ -85,7 +96,7 @@ def follow(path):
         readings = [r for r in map(parse, old) if r]
         now = time.monotonic()
         for i, reading in enumerate(readings):
-            add(now - (len(readings) - 1 - i) * 1.23, *reading)
+            add(now - (len(readings) - 1 - i) * 1.23, reading)
         chunk = ""
         while True:
             new = f.readline()
@@ -98,12 +109,12 @@ def follow(path):
             reading = parse(chunk.strip())
             chunk = ""
             if reading:
-                add(time.monotonic(), *reading)
+                add(time.monotonic(), reading)
 
 
-def add(t, vibration, current):
+def add(t, reading):
     with lock:
-        data.append((t, vibration, current))
+        data.append((t, reading))
         while data and data[0][0] < t - WINDOW_S:
             data.popleft()
 
@@ -112,42 +123,78 @@ def build_window(clock=time.monotonic):
     plt.rcParams.update({
         "figure.facecolor": SURFACE, "axes.facecolor": SURFACE,
         "axes.edgecolor": GRID, "axes.labelcolor": INK_2,
-        "xtick.color": INK_2, "ytick.color": INK_2, "font.size": 11,
-        "axes.spines.top": False, "axes.spines.right": False,
+        "xtick.color": INK_2, "ytick.color": INK_2, "font.size": 10,
+        "axes.spines.top": False,
     })
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7.5), sharex=True)
     try:
-        fig.canvas.manager.set_window_title("Vibration and current")
+        fig.canvas.manager.set_window_title("Bench live")
     except AttributeError:
         pass
-    fig.subplots_adjust(top=0.78)
-    ax.grid(True, color=GRID, linewidth=0.8)
-    ax.set_xlim(-WINDOW_S, 0)
-    ax.set_xlabel("seconds ago")
-    ax.set_ylabel("total vibration (g)")
-    line, = ax.plot([], [], color=SERIES, linewidth=2)
+    fig.subplots_adjust(hspace=0.35, wspace=0.28, top=0.9, bottom=0.08)
+    ax_vib, ax_cur, ax_rpm, ax_climate = axes.flat
+    ax_hum = ax_climate.twinx()
+    for ax in (ax_vib, ax_cur, ax_rpm, ax_climate):
+        ax.spines["right"].set_visible(ax is ax_climate)
+        ax.grid(True, color=GRID, linewidth=0.8)
+        ax.set_xlim(-WINDOW_S / 60, 0)
+    for ax in (ax_rpm, ax_climate):
+        ax.set_xlabel("minutes ago")
+    ax_vib.set_ylabel("g")
+    ax_cur.set_ylabel("mA")
+    ax_rpm.set_ylabel("RPM")
+    ax_climate.set_ylabel("°C", color=RED)
+    ax_hum.set_ylabel("%", color=TEAL)
 
-    vib_text = fig.text(0.125, 0.9, "", fontsize=22, fontweight="bold", color=INK)
-    vib_label = fig.text(0.125, 0.85, "vibration now", fontsize=11, color=INK_2)
-    cur_text = fig.text(0.9, 0.9, "", fontsize=22, fontweight="bold", color=INK, ha="right")
-    cur_label = fig.text(0.9, 0.85, "current now", fontsize=11, color=INK_2, ha="right")
-    _ = (vib_label, cur_label)
+    l_vib, = ax_vib.plot([], [], color=BLUE, linewidth=1.8)
+    l_cur, = ax_cur.plot([], [], color=ORANGE, linewidth=1.8)
+    l_rpm, = ax_rpm.plot([], [], color=PURPLE, linewidth=1.8)
+    l_temp, = ax_climate.plot([], [], color=RED, linewidth=1.8)
+    l_hum, = ax_hum.plot([], [], color=TEAL, linewidth=1.8)
+    notice = fig.text(0.5, 0.955, "", fontsize=14, color=INK, ha="center")
+
+    def series(copy, now, key):
+        points = [((t - now) / 60, m[key]) for t, m in copy if m[key] is not None]
+        return [p[0] for p in points], [p[1] for p in points]
+
+    def span(ax, ys, slack, floor=None):
+        if not ys:
+            return
+        low, high = min(ys), max(ys)
+        margin = max((high - low) * 0.2, slack)
+        ax.set_ylim(low - margin if floor is None else max(floor, low - margin), high + margin)
+
+    def title(ax, name, value, text):
+        ax.set_title(f"{name}: {text if value is not None else 'no reading'}",
+                     loc="left", fontsize=13, fontweight="bold", color=INK)
 
     def update(_):
         now = clock()
         with lock:
             copy = list(data)
         if not copy:
-            vib_text.set_text("waiting for the board...")
-            cur_text.set_text("")
+            notice.set_text("waiting for the board...")
             return []
-        ts = [d[0] - now for d in copy]
-        vs = [d[1] for d in copy]
-        line.set_data(ts, vs)
-        ax.set_ylim(0, max(vs) * 1.3)
-        _, vibration, current = copy[-1]
-        vib_text.set_text(f"{num(vibration, 3)} g")
-        cur_text.set_text(f"{num(current, 0)} mA" if current is not None else "no INA219")
+        notice.set_text("")
+        last = copy[-1][1]
+        for line, ax, key, slack, floor in (
+                (l_vib, ax_vib, "vib", 0.01, 0), (l_cur, ax_cur, "cur", 5, 0),
+                (l_rpm, ax_rpm, "rpm", 50, 0), (l_temp, ax_climate, "temp", 0.5, None),
+                (l_hum, ax_hum, "hum", 2, 0)):
+            xs, ys = series(copy, now, key)
+            line.set_data(xs, ys)
+            span(ax, ys, slack, floor)
+        title(ax_vib, "Vibration", last["vib"], f"{last['vib']:.3f} g")
+        title(ax_cur, "Current", last["cur"],
+              f"{last['cur']:.0f} mA" if last["cur"] is not None else "")
+        title(ax_rpm, "Speed", last["rpm"],
+              f"{last['rpm']:.0f} RPM" if last["rpm"] is not None else "")
+        if last["temp"] is not None and last["hum"] is not None:
+            ax_climate.set_title(f"Climate: {last['temp']:.1f} °C, {last['hum']:.0f} %",
+                                 loc="left", fontsize=13, fontweight="bold", color=INK)
+        else:
+            ax_climate.set_title("Climate: no reading", loc="left", fontsize=13,
+                                 fontweight="bold", color=INK)
         return []
 
     return fig, update
