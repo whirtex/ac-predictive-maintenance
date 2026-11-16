@@ -159,13 +159,73 @@ is not decided. The detector has a blind spot for changes slower than about 1.5%
 per minute, which only the drift shows. The recordings cover minutes, not days,
 and the faults are simulated.
 
+## Detector: back to a model trained once, per unit and by climate
+
+**Why the adaptive detector was dropped** (6 November 2026). It raised no false
+alarm, but it absorbs a fault that grows slowly, and clogging filters and
+wearing bearings grow slowly. The detector of the article is trained once,
+after maintenance, on healthy recordings of the unit itself, and then stays
+frozen (`analysis/trained_baseline.py`).
+
+**The room climate as an operating condition** (6 November). A DHT11 on GPIO 13
+records the air temperature and humidity. They raise no alarm: for each window,
+the normal is that of the 600 training windows with the most similar climate,
+with 1 °C weighing as much as 5 points of humidity. A window whose climate is
+far from all of training is marked as a new climate, and the right thing is to
+record and train in that climate too.
+
+**Three questions per window.** The ruler flags the vibration strength (RMS,
+peak, strength of the dominant frequency) more than 6 spreads above normal;
+the Isolation Forest flags an unusual combination of the five deviations, on two
+consecutive windows with some deviation of 3 or more; the slow look flags the
+3 min median of the energy and of the dominant frequency leaving the range seen
+in training, which catches a fault too small for any single window. The first
+5 minutes of each recording are the motor warming up: out of training and
+without alarms.
+
+**The fan on a board** (11 November). Loose on a table, the normal of the same
+fan changed from place to place (0.10 to 0.18 g). Glued upright to a wooden
+board, as a unit is installed, the normal of five places stayed within 0.057
+and 0.066 g (`results/five_places_board.png`).
+
+**What left the alarm** (12 November). The tachometer, which read from 0 to
+4900 rpm on the same motor depending on how its wire sat; the speed comes from
+the dominant frequency (46 Hz). The current, which went from 154 to 142 mA
+between two healthy days on the same board and was moved by none of the
+faults; it is still recorded. And the ruler in both directions: a fan that only
+vibrated less in a hotter room is not failing, so the strength measures count
+only when they rise. The base sway below 10 Hz also left the slow look.
+
+**Three real faults** (11 and 12 November), each recorded once on the same
+bench: a thumb-sized piece of tape glued firmly to a blade (unbalance: the
+vibration rose 55%, to 0.103 g, with the frequency still at 46 Hz), the same
+tape loosely glued and flapping (loose part: the vibration stayed near normal,
+the dominant frequency doubled to 93 Hz) and a wooden block 2 to 5 cm from the
+outlet (obstruction: the dominant frequency dropped to 15 Hz).
+
+**Default training and result.** The night of 12 November (first 200 min, about
+26 °C) and the first 28 min of the hot afternoon (about 30 °C); the rest is for
+testing. No false alarm on the healthy test stretches and the three faults
+caught, the loose part within a minute. The fixed limit saw only the
+unbalance, and the adaptive detector raised 5 to 8% of false alarms
+(`results/method_comparison_real_faults.txt`, Table I of the article).
+
+**Numbers of the early evaluations.** The early trained-baseline evaluations,
+with the fan loose on a table (6 and 7 November), are the basis of the "Methods
+tried" paragraph of the article: trained in one place, the detector flagged
+the whole of another place. With today's detector those alarms disappear,
+because the ruler only flags vibration that rises and the loose fan vibrated
+less in the other places. The article reports them as they were measured, by
+the detector of that time; they are not part of this repository.
+
 ## Left out of this version
 
-- **Recording faults and telling them apart** stay for after the first
-  assessment. Without fault recordings the article reports no F1: the
-  quantitative result is the false-alarm rate on normal data, and the detection
-  of real disturbances is qualitative, seen live by shaking the fan or covering
-  its inlet.
+- **Telling the faults apart.** The detector says which measure moved, not
+  which fault it is. Each fault was made once, so there is no F1 yet.
+- **Finer detail of the signal.** The board keeps five numbers per axis and
+  window and drops the rest of the spectrum. Keeping the spectrum in bands (46,
+  93 and 140 Hz) would let the detector see the loose part's 93 Hz harmonic
+  growing before it dominates. It needs a firmware change and new recordings.
 - **Remote alerts and relay shutdown** are listed as future work. With MQTT
   they would join later as subscribers of the same topic, without changing the
   firmware.
