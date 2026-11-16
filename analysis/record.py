@@ -11,6 +11,9 @@ Use it through the ./record shortcut, in the repository root. It:
   5. shows the elapsed time and warns at 10 minutes.
 
 Ctrl+C stops the recording and closes the chart.
+
+Runs on the Mac and on Windows. On Windows, use record.bat; while it records,
+the computer does not go to sleep (the screen may turn off).
 """
 
 import glob
@@ -28,13 +31,33 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SUGGESTED_DURATION_S = 10 * 60
 
 
+USB_CHIPS = ("ch340", "ch341", "ch910", "cp210", "ftdi", "usb-serial", "usb serial", "uart")
+
+
 def find_port():
     ports = sorted(glob.glob("/dev/cu.usbserial*") + glob.glob("/dev/cu.SLAB*")
                    + glob.glob("/dev/cu.wchusbserial*"))
     if not ports:
+        # Windows (COM3, COM4...): looks for the name of the board's USB chip.
+        from serial.tools import list_ports
+        ports = [p.device for p in list_ports.comports()
+                 if any(c in f"{p.description} {p.hwid}".lower() for c in USB_CHIPS)]
+    if not ports:
         print("The board was not found. Check the USB cable and try again.")
+        if os.name == "nt":
+            print("On Windows, if it does not show in Device Manager under"
+                  " 'Ports (COM & LPT)', the USB chip driver (CH340) is missing.")
         sys.exit(1)
     return ports[0]
+
+
+def keep_awake():
+    """On Windows, keeps the computer from sleeping while the program runs.
+    On the Mac, the ./record shortcut already does it with caffeinate."""
+    if os.name == "nt":
+        import ctypes
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
 
 
 def choose_file():
@@ -55,6 +78,7 @@ def choose_file():
 
 def main():
     port_path = find_port()
+    keep_awake()
     path = choose_file()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     relative = os.path.relpath(path, ROOT)
