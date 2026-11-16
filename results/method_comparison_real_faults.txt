@@ -1,0 +1,26 @@
+Training: 10667 windows; fixed limit at 1.25 x 0.0665 g
+
+Healthy + fault sequences
+  unbalance (548 fault windows, 3435 healthy before)
+    trained baseline false alarm before   0.0%  fault in alarm 100.0%  steady alarm: 0.0 min
+    adaptive         false alarm before   7.8%  fault in alarm 100.0%  steady alarm: 0.0 min
+    fixed limit      false alarm before   0.0%  fault in alarm 100.0%  steady alarm: 0.0 min
+  loose part (812 fault windows, 3435 healthy before)
+    trained baseline false alarm before   0.0%  fault in alarm  91.5%  steady alarm: 1.0 min
+    adaptive         false alarm before   7.8%  fault in alarm  19.2%  steady alarm: 16.5 min
+    fixed limit      false alarm before   0.0%  fault in alarm   0.0%  steady alarm: never
+  obstruction (2502 fault windows, 1196 healthy before)
+    trained baseline false alarm before   0.0%  fault in alarm 100.0%  steady alarm: 0.0 min
+    adaptive         false alarm before   0.1%  fault in alarm 100.0%  steady alarm: 0.0 min
+    fixed limit      false alarm before   0.0%  fault in alarm   0.0%  steady alarm: never
+
+Other healthy recordings (false alarm after warm-up)
+  session of 11 Nov (board-place6): trained baseline 0.0%  adaptive 5.1%  fixed limit 0.0%
+  after the tape flew away: trained baseline 0.2%  adaptive 100.0%  fixed limit 0.0%
+
+Simulated slow fault on the test (the vibration strength rises at the rate per minute,
+from 4 min into the test): how far above normal at the steady alarm
+  night, 0.5%/min: trained baseline +7%  adaptive never  fixed limit +25%
+  night, 1.0%/min: trained baseline +8%  adaptive never  fixed limit +25%
+  hot afternoon, 0.5%/min: trained baseline +3%  adaptive never  fixed limit never
+  hot afternoon, 1.0%/min: trained baseline +4%  adaptive never  fixed limit never
