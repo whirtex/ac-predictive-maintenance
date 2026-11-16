@@ -4,7 +4,7 @@ Output: assets/architecture.png, in English like the article, at the width of
 one SBrT column.
 
 Usage (in the repository root):
-    .venv/bin/python analysis/architecture_figure.py
+    .venv/bin/python analysis/figures/architecture_figure.py
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 INK = "#0b0b0b"
 INK_2 = "#52514e"
 BORDER = "#9a9892"

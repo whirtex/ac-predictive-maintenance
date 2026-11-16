@@ -14,10 +14,10 @@ measures:
   4. the same thing with a frozen baseline, learned once and never updated,
      to measure what adaptation changes.
 
-Outputs in results/: two_baseline_evaluation.txt and slow_drift_evaluation.png.
+Outputs in results/ap1/: two_baseline_evaluation.txt and slow_drift_evaluation.png.
 
 Usage (in the repository root):
-    .venv/bin/python analysis/evaluate_two_baselines.py
+    .venv/bin/python analysis/ap1/evaluate_two_baselines.py
 """
 
 import csv
@@ -33,10 +33,13 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.ticker import FuncFormatter  # noqa: E402
 import numpy as np  # noqa: E402
 
+import os  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import paths  # noqa: E402,F401
 from adaptive import AdaptiveDetector  # noqa: E402
 from csv_format import COLUMNS, valid_line  # noqa: E402
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 LEARNING_S = 120
 FAULT_S = 60
 FAULT_FACTOR = 1.30
@@ -182,9 +185,9 @@ def main():
     ax.legend(frameon=False, ncol=4, loc="lower left", bbox_to_anchor=(0, 1.0), fontsize=8)
     ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
     fig.tight_layout()
-    fig.savefig(ROOT / "results" / "slow_drift_evaluation.png", dpi=200)
+    fig.savefig(ROOT / "results" / "ap1" / "slow_drift_evaluation.png", dpi=200)
     plt.close(fig)
-    print("\nfigure: results/slow_drift_evaluation.png (1.5% per minute)")
+    print("\nfigure: results/ap1/slow_drift_evaluation.png (1.5% per minute)")
 
 
 if __name__ == "__main__":
@@ -192,6 +195,6 @@ if __name__ == "__main__":
     with redirect_stdout(buffer):
         main()
     text = buffer.getvalue()
-    (ROOT / "results").mkdir(exist_ok=True)
-    (ROOT / "results" / "two_baseline_evaluation.txt").write_text(text, encoding="utf-8")
+    (ROOT / "results" / "ap1").mkdir(parents=True, exist_ok=True)
+    (ROOT / "results" / "ap1" / "two_baseline_evaluation.txt").write_text(text, encoding="utf-8")
     sys.stdout.write(text)

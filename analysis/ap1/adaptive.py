@@ -51,6 +51,10 @@ import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
+import os  # noqa: E402
+import sys  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import paths  # noqa: E402,F401
 from csv_format import TOTALS, derive_window, readable_name
 
 LEARNING_S = 120       # initial learning in place

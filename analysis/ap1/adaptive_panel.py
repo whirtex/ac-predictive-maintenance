@@ -15,9 +15,9 @@ everything it does:
   - at the bottom, the log of every update and every alarm.
 
 Usage:
-    python analysis/adaptive_panel.py                      # live board
-    python analysis/adaptive_panel.py --replay data/rep3.csv
-    python analysis/adaptive_panel.py --replay data/rep3.csv --fault 300
+    python analysis/ap1/adaptive_panel.py                      # live board
+    python analysis/ap1/adaptive_panel.py --replay data/rep3.csv
+    python analysis/ap1/adaptive_panel.py --replay data/rep3.csv --fault 300
         # injects 60 s of vibration 30% stronger at 300 s of the recording,
         # for rehearsing; the panel says the fault is simulated
 
@@ -38,6 +38,10 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
+import os  # noqa: E402
+import sys  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import paths  # noqa: E402,F401
 import adaptive as A
 from csv_format import COLUMNS, valid_line
 

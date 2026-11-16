@@ -7,6 +7,6 @@
 #                    3 minutes, in case the board fails on the spot.
 cd "$(dirname "$0")" || exit 1
 if [ "$1" = "backup" ]; then
-    exec .venv/bin/python analysis/adaptive_panel.py --replay data/rep3.csv --fault 180
+    exec .venv/bin/python analysis/ap1/adaptive_panel.py --replay data/rep3.csv --fault 180
 fi
-exec .venv/bin/python analysis/adaptive_panel.py
+exec .venv/bin/python analysis/ap1/adaptive_panel.py
