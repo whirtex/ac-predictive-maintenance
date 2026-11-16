@@ -39,7 +39,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 import adaptive as A
-from csv_format import COLUMNS
+from csv_format import COLUMNS, valid_line
 
 WINDOW_S = 180          # how much of the past the charts show
 SUSTAINED_S = 2.0       # outside the normal for longer than this: continuous anomaly
@@ -370,7 +370,7 @@ def build_window(panel):
 
 def window_from_line(line):
     fields = line.split(",")
-    if len(fields) != len(COLUMNS) or fields[0] == "datetime":
+    if not valid_line(fields):
         return None
     window = dict(zip(COLUMNS, fields))
     try:

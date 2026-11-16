@@ -12,6 +12,17 @@ COLUMNS = [
     "current_ma", "rpm",
 ]
 
+# Room climate (DHT11), since 6 November 2026. Older recordings do not have
+# these two columns; newer ones do. Readers of both formats use valid_line()
+# and zip(COLUMNS, line), which ignores the extra columns.
+CLIMATE = ["air_temp_c", "air_humidity_pct"]
+
+
+def valid_line(fields):
+    return (len(fields) in (len(COLUMNS), len(COLUMNS) + len(CLIMATE))
+            and fields[0] not in ("datetime", "data_hora"))
+
+
 VIBRATION = [c for c in COLUMNS if c[:2] in ("x_", "y_", "z_")]
 SUPPORT = ["current_ma", "rpm"]
 

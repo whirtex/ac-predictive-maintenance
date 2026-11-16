@@ -8,25 +8,30 @@
   and speed come as support columns: if the INA219 or the tachometer are not
   connected, the column comes out empty or zero and the recording goes on.
 
-  The temperature left the project on 22 September 2026, on the professor's
-  guidance. The temporary DHT11 left with it.
+  The machine temperature left the project on 22 September 2026, on the
+  professor's guidance. On 6 November a DHT11 came back, now for the room
+  climate (air temperature and humidity), which enters the model as an
+  operating condition, not as a fault signal. Without it connected, the two
+  columns come out empty and the recording goes on.
 
   Wiring (see docs/assembly.md, Step 4, for the wiring that works):
     ADXL345 and INA219 -> GPIO 21 SDA, GPIO 22 SCL
     Fan tachometer     -> GPIO 18   (with a 10 kOhm resistor to 3.3 V)
+    DHT11 (climate)    -> GPIO 13   (the module already has the resistor)
 
   The tachometer gives TWO pulses per turn, the standard for a PC fan.
 
   Lines that start with # are comments and alarms: pandas ignores them with
   comment='#'.
 
-  Needs the Adafruit INA219 library.
+  Needs the Adafruit INA219 and DHT sensor libraries.
 */
 
 #include <WiFi.h>
 #include <time.h>
 #include <Wire.h>
 #include <Adafruit_INA219.h>
+#include <DHT.h>
 
 // The network name and password live in credentials.h, which is not in the
 // repository. Copy credentials.h.example as credentials.h and fill it in
@@ -98,6 +103,18 @@ void IRAM_ATTR countPulse() {
   lastPulseUs = now;
   pulses++;
 }
+
+// --- DHT11, room climate ---------------------------------------------
+
+#define DHT_PIN 13
+// The DHT11 reads at most once per second, and the climate changes slowly.
+const unsigned long DHT_INTERVAL_MS = 5000;
+
+DHT dht(DHT_PIN, DHT11);
+float airTemp = NAN;
+float airHumidity = NAN;
+unsigned long lastDht = 0;
+int dhtFailures = 0;
 
 // --- state -----------------------------------------------------------
 
@@ -322,7 +339,12 @@ void emitWindow() {
   Serial.print(",");
   if (nCurrent > 0) Serial.print(currentSum / nCurrent, 1);
   Serial.print(",");
-  Serial.println(rpm, 0);
+  Serial.print(rpm, 0);
+  Serial.print(",");
+  if (!isnan(airTemp)) Serial.print(airTemp, 1);
+  Serial.print(",");
+  if (!isnan(airHumidity)) Serial.print(airHumidity, 0);
+  Serial.println();
 
   currentSum = 0;
   nCurrent = 0;
@@ -340,6 +362,8 @@ void setup() {
   pinMode(TACH_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TACH_PIN), countPulse, FALLING);
 
+  dht.begin();
+
   connectWiFi();
 
   inaOk = startIna();
@@ -349,7 +373,7 @@ void setup() {
                  "x_rms,x_peak,x_kurtosis,x_domfreq,x_domamp,"
                  "y_rms,y_peak,y_kurtosis,y_domfreq,y_domamp,"
                  "z_rms,z_peak,z_kurtosis,z_domfreq,z_domamp,"
-                 "current_ma,rpm");
+                 "current_ma,rpm,air_temp_c,air_humidity_pct");
 }
 
 void loop() {
@@ -397,6 +421,24 @@ void loop() {
     if (nSamples == N_SAMPLES) {
       emitWindow();
       nSamples = 0;
+    }
+  }
+
+  // Climate: read right after emptying the ADXL345 FIFO, which holds
+  // 32 samples (~76 ms). Reading the DHT11 blocks the loop for ~25 ms,
+  // so it fits without losing a sample.
+  if (millis() - lastDht >= DHT_INTERVAL_MS) {
+    lastDht = millis();
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
+    if (!isnan(t) && !isnan(h)) {
+      airTemp = t;
+      airHumidity = h;
+      dhtFailures = 0;
+    } else if (++dhtFailures == 3) {
+      airTemp = NAN;
+      airHumidity = NAN;
+      Serial.println("# DHT11 not responding: the climate columns come out empty");
     }
   }
 

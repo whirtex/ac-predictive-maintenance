@@ -34,7 +34,7 @@ from matplotlib.ticker import FuncFormatter  # noqa: E402
 import numpy as np  # noqa: E402
 
 from adaptive import AdaptiveDetector  # noqa: E402
-from csv_format import COLUMNS  # noqa: E402
+from csv_format import COLUMNS, valid_line  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LEARNING_S = 120
@@ -48,7 +48,7 @@ def load_session(r):
     t = 0.0
     with open(ROOT / "data" / f"rep{r}.csv", encoding="utf-8") as f:
         for line in csv.reader(f):
-            if not line or line[0].startswith("#") or len(line) != len(COLUMNS):
+            if not line or line[0].startswith("#") or not valid_line(line):
                 continue
             if line[0] == "datetime":
                 continue
