@@ -1,7 +1,9 @@
 """Draws the prototype architecture diagram for the article.
 
-Output: assets/architecture.png, in English like the article, at the width of
-one SBrT column.
+Output: assets/architecture-board.png, without the tachometer, which left on
+12 November (the earlier version, with the adaptive detector, stays in
+assets/architecture.png), in English like the article, at the width of one
+SBrT column.
 
 Usage (in the repository root):
     .venv/bin/python analysis/figures/architecture_figure.py
@@ -24,11 +26,11 @@ BG_PC = "#eaf2fb"
 
 BLOCKS = [
     # (x, title, lines, background)
-    (0.0, "Sensors", ["ADXL345", "INA219", "tachometer"], BG_EDGE),
-    (2.35, "ESP32", ["features per", "1.23 s window"], BG_EDGE),
+    (0.0, "Sensors", ["ADXL345", "INA219", "DHT11"], BG_EDGE),
+    (2.35, "ESP32", ["features per", "1.24 s window"], BG_EDGE),
     (4.7, "Link", ["USB (bench)", "MQTT (field)"], "#ffffff"),
-    (7.05, "Detector", ["forest + ruler", "two baselines"], BG_PC),
-    (9.4, "Panel", ["alarm naming", "the measure,", "drift"], BG_PC),
+    (7.05, "Detector", ["trained once", "per unit,", "by climate"], BG_PC),
+    (9.4, "Checker", ["alarm naming", "the measure"], BG_PC),
 ]
 WIDTH = 2.0
 HEIGHT = 2.3
@@ -59,7 +61,7 @@ def main():
     ax.text(7.05 + (2.35 + WIDTH) / 2, -0.3, "remote (laptop)",
             ha="center", fontsize=5.4, color=INK_2, style="italic")
     fig.tight_layout(pad=0.1)
-    target = ROOT / "assets" / "architecture.png"
+    target = ROOT / "assets" / "architecture-board.png"
     fig.savefig(target, dpi=300)
     plt.close(fig)
     print(target.relative_to(ROOT))
