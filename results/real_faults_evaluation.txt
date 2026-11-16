@@ -1,0 +1,16 @@
+--- default training: night + hot afternoon, 1st half  (training 10667 windows)
+  night end (healthy)              healthy out   0.0%  ruler   0.0 model   0.0 slow   0.0  {}
+  heat 2nd half (healthy)          healthy out   0.0%  ruler   0.0 model   0.0 slow   0.0  {}
+  board-place6 11 Nov (healthy)    healthy out   0.0%  ruler   0.0 model   0.0 slow   0.0  {}
+  after the tape flew (healthy)    healthy out   0.2%  ruler   0.2 model   0.0 slow   0.0  {'peak_total': 1}
+  firm tape (unbalance)            fault   out 100.0%  ruler 100.0 model 100.0 slow  81.9  {'rms_total': 547, 'domamp_total': 1}
+  loose tape (loose part)          fault   out  86.6%  ruler   0.2 model   0.0 slow  86.3  {'domfreq': 703}
+  obstruction                      fault   out 100.0%  ruler  95.5 model 100.0 slow  96.0  {'domfreq': 2502}
+--- night only, for comparison  (training 9550 windows)
+  night end (healthy)              healthy out   0.0%  ruler   0.0 model   0.0 slow   0.0  {}
+  heat 2nd half (healthy)          healthy out   0.0%  ruler   0.0 model   0.0 slow   0.0  {}
+  board-place6 11 Nov (healthy)    healthy out   0.0%  ruler   0.0 model   0.0 slow   0.0  {}
+  after the tape flew (healthy)    healthy out   0.2%  ruler   0.2 model   0.0 slow   0.0  {'peak_total': 1}
+  firm tape (unbalance)            fault   out 100.0%  ruler 100.0 model 100.0 slow  81.9  {'rms_total': 547, 'domamp_total': 1}
+  loose tape (loose part)          fault   out  86.9%  ruler   0.2 model   0.5 slow  86.3  {'domfreq': 706}
+  obstruction                      fault   out  99.8%  ruler   6.1 model  98.6 slow  96.0  {'domfreq': 2498}
