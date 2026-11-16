@@ -1,258 +1,169 @@
 # Predictive maintenance for air-conditioning equipment
 
-Prototype for the course IBM3119, Embedded Systems Project (Ibmec, 2026).
+Embedded system that watches an air-conditioning unit in continuous operation
+through its vibration and warns when it leaves the normal of that machine, in
+that place and in that climate. It detects deviations and says which
+measurement weighed most; it does not estimate the remaining useful life.
+
+Course IBM3119, Embedded Systems Project (Ibmec, 2026). The full article, in
+English, is in [`paper/predictive-maintenance.tex`](paper/predictive-maintenance.tex).
 
 This project was developed in a repository shared with another project of the
 course, and it was moved here with its commit history filtered. The commits
 before the English translation have the files and comments in Portuguese. The
 translation is in the commits that follow.
 
-The goal is an embedded system that monitors the condition of air-conditioning
-equipment in continuous operation, such as units in server rooms, hospitals and
-telecom shelters, and detects deviations that can guide maintenance. Vibration
-is the main signal and the only input of the detector, on the professor's
-guidance. Current and speed are recorded as support. The first version detects
-anomalies. It does not say which fault it is and does not estimate the
-remaining useful life.
+## What the article shows
 
-Development has two stages. **On the bench**, a 12 V fan makes it possible to
-build the acquisition chain and cause controlled changes. **On the target
-equipment**, installing the sensors on an air conditioner still depends on
-access to the unit and on a proper electrical setup. The bench results do not
-show performance on a real air conditioner.
+A single model does not fit every unit: the same loose fan vibrated at 0.10 g
+on one table and 0.18 g on another, more than an obstruction changes it. What
+generalizes is the method: each unit learns its own normal where it is
+installed, taking the room temperature and humidity into account, and the
+detector, trained once, does not relearn, so that a slow fault does not become
+the new normal.
 
-How it works today: an ESP32 reads the ADXL345, the INA219 and the tachometer,
-computes the features of each window of ~1.23 s and sends one CSV line over
-USB. On the computer, an **adaptive two-baseline detector** learns what is
-normal in place during the first 2 minutes, relearns every minute and keeps the
-installation baseline to show drift. MQTT is left for the field installation
-(the college network requires a web login, which the board cannot complete).
+With the fan fixed to a board, as a unit is installed, we made three real
+faults on the bench: unbalance, a loose part and an obstruction. The detector
+raised no false alarm on the healthy test stretches (night, hot afternoon and
+another day) and caught all three: the unbalance through the vibration
+strength, the loose part and the obstruction through the dominant frequency.
+The fixed limit only saw the unbalance. The adaptive detector of the first
+stage raised 5 to 8% of false alarms, saw the loose part late and never saw the
+simulated slow fault.
 
-## Bench status
+## The bench
 
-| Part | Status |
-|---|---|
-| Vibration (ADXL345) | Working; the continuity of the samples inside the window has not been measured yet |
-| Current (INA219) | Working, window average (148 to 153 mA across the sessions) |
-| Speed (tachometer) | Reads, but counts 25% to 52% too many; the reliable speed comes from the vibration peak (~46.4 Hz, ~2780 rpm) |
-| Features on the ESP32 | Working; the FFT was checked against known sine waves |
-| Recording, panel and adaptive detector | Working live on the bench |
-| Data | Three independent normal sessions in `data/` (12.3, 21.5 and 37.1 min) |
-| Faults | Simulated in software over the normal sessions; physical disturbances only in the live tests. Recordings of imbalance, friction and obstruction are left for the next stage |
+ESP32-WROVER-DEV, ADXL345 accelerometer, INA219 current sensor, DHT11 for the
+room climate and a 12 V fan glued to a wooden board. The recordings are in
+`data/`. The step-by-step assembly is in [`docs/assembly.md`](docs/assembly.md),
+and each decision, with its reason, in
+[`docs/design-decisions.md`](docs/design-decisions.md).
 
-## Bench hardware
+![Bench](assets/bench-board-photo.jpg)
 
-| Component | Role |
-|---|---|
-| ESP32-WROVER-DEV | Microcontroller, with Wi-Fi for the time over NTP |
-| ADXL345 (GY-291 board) | 3-axis accelerometer, glued to the side of the fan |
-| INA219 | Fan current, in series with the supply |
-| 12 V fan, 80 × 80 × 25 mm, 3 wires | Test equipment; the yellow wire is the tachometer |
-| Regulated 12 V, 1 A supply, and P4 adapter with terminal | Fan power |
-| 10 kΩ resistor | Tachometer pull-up |
-| Breadboard, jumpers and a wooden board | Assembly; the fan is glued upright to the board |
-
-### Bench wiring
-
-| From | To |
-|---|---|
-| ADXL345 `SDA` / `SCL` | GPIO 21 / GPIO 22 |
-| ADXL345 `VCC` and `CS` | 3.3 V (`CS` at 3.3 V turns on I2C mode) |
-| ADXL345 `GND` and `SDO` | GND (`SDO` at GND fixes the address `0x53`) |
-| INA219 `SDA` / `SCL` / `VCC` / `GND` | GPIO 21 / GPIO 22 / 3.3 V / GND |
-| supply `+` → INA219 `VIN+` → `VIN−` → red of the fan | Path of the measured current |
-| Yellow of the fan | GPIO 18, with 10 kΩ to 3.3 V |
-| ESP32 GND, black of the fan and supply `−` | Same point |
-
-The `+` and `−` rails of the breadboard only receive 3.3 V and GND if there is
-a jumper from the `3V3` and the `GND` of the ESP32 to them. The full
-step-by-step, with the check for each stage, is in
-[`docs/assembly.md`](docs/assembly.md).
-
-## Software
-
-Board: ESP32 Wrover Module, `esp32` core 3.3.11 (it also compiles with 3.3.12),
-Arduino IDE 2.3.10. External library: Adafruit INA219 1.2.3. The ADXL345 is
-read directly over I²C. The `esp32_acquisition` sketch needs a local
-`credentials.h` file; copy
-[`credentials.h.example`](firmware/esp32_acquisition/credentials.h.example),
-fill in the network name and password, and keep `credentials.h` out of Git.
-Wi-Fi only synchronizes the clock over NTP; without a connection, the CSV uses
-`boot+...` timestamps.
-
-On the computer: Python 3 with `numpy`, `pandas`, `scikit-learn`, `matplotlib`
-and `pyserial` (list in `analysis/requirements.txt`).
-
-| Firmware (`firmware/`) | What it does |
-|---|---|
-| `esp32_acquisition` | Extracts features and emits one CSV line per window on the serial port |
-
-| Analysis (`analysis/`) | What it does |
-|---|---|
-| `adaptive.py` | The two-baseline detector (Isolation Forest + ruler, adaptive baseline, installation reference) |
-| `adaptive_panel.py` | Presentation panel, live or playing a recording |
-| `record.py` | Records a session from the board into `data/` and shows the chart during recording |
-| `monitor.py` | Simple chart of the vibration, with the current in the corner |
-| `evaluate_two_baselines.py` | Offline evaluation of the detector on the three sessions (the numbers of the article) |
-| `architecture_figure.py` | Architecture diagram used in the article |
-| `csv_format.py` | Columns of the board CSV and the 5 total measures |
-
-### What the board computes
-
-The firmware sets the ADXL345 to 400 Hz, with the FIFO in stream mode, and
-forms windows of 512 samples (~1.23 s at the measured 417 Hz). For each axis it
-computes the RMS (with the mean removed), the peak, the kurtosis and, with a
-Hann window and a 512-point FFT, the dominant frequency and its amplitude.
-Current (window average) and speed come out as extra columns. That makes 19
-columns per line.
-
-## Model: two-baseline detector
-
-The detector uses **5 measures that do not depend on the orientation of the
-sensor**: the vector sum of the RMS, of the peaks and of the dominant
-amplitudes of the three axes, the mean kurtosis and the median dominant
-frequency. Each window goes through two tests, and one is enough to raise an
-alarm:
-
-- **Isolation Forest** (150 trees, over the 5 standardized measures). The
-  threshold is the 0.2% quantile of the normal scores. It only raises an alarm
-  if it flags two windows in a row and some measure is at least 3 deviations
-  from normal.
-- **Ruler**: total vibration, peak or dominant amplitude more than 6 robust
-  deviations away (median and MAD, with a floor of 3% of the median).
-
-The alarm says which measure moved and by how much ("total vibration: 1.3 times
-normal").
-
-**The two baselines:**
-
-1. **Adaptive baseline.** It learns for 2 minutes where it sits (skipping the
-   15 s of start-up) and relearns every minute from the last 10 minutes of
-   windows without an alarm. A slow change (warm-up, weather) enters the normal;
-   a fast change becomes an alarm. Windows in alarm, the 30 s after them and the
-   last 30 s before each update are not learned.
-2. **Installation reference.** The baseline of the first 2 minutes is kept and
-   never changes. The panel shows "vs. start": how far the current normal has
-   moved from it. It is what reveals a slow wear that the adaptive baseline
-   would absorb.
-
-If the alarms cover 80% of the windows for 3 minutes, the detector asks for an
-inspection and does not learn the change.
-
-**What the detector learns and what is fixed.** The code has no fixed vibration
-value. On each machine, the detector learns by itself the normal (the median
-and the deviation of each measure), the Isolation Forest threshold, the band of
-the ruler and the installation reference. The parameters below, on the other
-hand, are fixed in `adaptive.py` and were tuned for the bench fan:
-
-| Parameter | Value |
-|---|---|
-| Ruler | 6 deviations |
-| Deviations for the model to raise an alarm | 3, on some measure, in two windows in a row |
-| Floor of the deviation | 3% of the median |
-| Start-up skipped in the first learning | 15 s |
-| Initial learning | 2 min |
-| Relearning | every 60 s, from the last 10 min |
-| Block after an alarm | 30 s |
-| Inspection request | 80% of windows in alarm for 3 min |
-
-These values hold for the bench. They have not been shown on other air
-conditioners, and there is no general value yet. The likely way forward is to
-work with percentages that fit any machine, but that is not decided.
-
-**Results** (`./.venv/bin/python analysis/evaluate_two_baselines.py`, output in
-`results/two_baseline_evaluation.txt`):
-
-| Test | Adaptive baseline | Frozen baseline |
-|---|---|---|
-| False alarms on the 3 normal sessions (3169 windows) | 0% | 5.7% |
-| Simulated sudden fault (+30% for 60 s, 12 injections) | 12 of 12, 99.8% of the windows | |
-| Slow rise of 1.5%/min | 4.5% of the windows in alarm, "vs. start" +20% | 44% |
-| Slow rise of 2%/min | 63% in alarm, inspection after 11.8 min | 57% |
-
-The faults are simulated in software over real normal recordings. The article
-and the panel say so.
+*The monitored fan is the one on the right, with the ADXL345 on its top edge.
+The fan at the back is not used.*
 
 ## How to use
 
-In the repository root, once:
+Inside this folder, once:
 
 ```
 python3 -m venv .venv
 .venv/bin/pip install -r analysis/requirements.txt
 ```
 
-Upload `esp32_acquisition` to the board (with `credentials.h` created) and
-close the Arduino IDE serial monitor. Then the shortcuts:
+On Windows, double-clicking `install.bat` does the same.
+
+Upload `firmware/esp32_acquisition` to the board (board "ESP32 Wrover Module",
+libraries Adafruit INA219 and DHT sensor library), with `credentials.h` copied
+from `credentials.h.example` and kept out of Git; the Wi-Fi only sets the clock
+by NTP. Close the serial monitor and use the shortcuts (on the Mac, `./name`;
+on Windows, `name.bat`):
 
 | Shortcut | What it does |
 |---|---|
-| `./present` | Full panel of the two-baseline detector, live. The `M` key shows the model score |
-| `./present backup` | Plays session 3 with a simulated fault at 3 min, in case the board fails on the spot |
-| `./record` | Asks for the recording name (the place of the fan, or Enter for a test) and records into `data/` with a live chart |
-| `./plot` | Only the vibration chart, with the current in the corner |
+| `record` | Records a session to `data/`, with the name you give, and shows the chart |
+| `train` | Trains the model on the healthy recordings you choose and saves it to `model.pkl` |
+| `check` | Runs a recording through the model: how much was out of the normal, by which measure, and a chart |
+| `./plot` | Live chart only: vibration, current, speed and climate |
+| `./present` | The adaptive detector panel of the first stage (`./present backup` plays a recorded session) |
 
-The step-by-step of the assembly and of the recordings is in
-[`docs/assembly.md`](docs/assembly.md).
-
-## Customizations
-
-What was developed beyond the standard use of the libraries and the IDE:
-
-- **Direct reading of the ADXL345.** The firmware sets the registers and uses
-  the FIFO in stream mode, without a library.
-- **FFT on the board.** Own radix-2 implementation, with a Hann window and
-  correction of the window gain, so the amplitude comes out in g. Checked with
-  sine waves of known amplitude and frequency.
-- **Rate estimated per window.** The conversion to Hz uses the duration
-  measured by the ESP32 (417 Hz on the bench, not the nominal 400).
-- **Time over NTP instead of an external clock.** The DS1302 module was
-  dropped after measuring it: it ran six times faster than real time.
-- **Sensor failure warnings.** `# ALARM` lines when the ADXL345 or the INA219
-  stop responding; the INA219 is restarted every 2 s.
-- **Tachometer by interrupt**, with a 4 ms debounce, which lowered the reading
-  from ~15 thousand to ~3.6 thousand rpm. It still counts too many.
-- **Current as the window average.** The brushless motor draws current in
-  pulses, and a single reading varies by more than 80 mA with no fault at all.
-- **Total measures independent of the orientation.** The loose fan changed the
-  split of the vibration between the axes without changing the total; the
-  detector now uses only totals.
-- **Two-baseline detector.** Adaptive baseline with protections against
-  learning the fault, a fixed installation reference and an inspection request.
-  The standard scikit-learn Isolation Forest was combined with the robust ruler
-  because its score saturates far from normal, and it got the two-window and
-  3-deviation rules after false alarms in the live tests.
-- **Full panel** with automatic serial reconnection, an event log and a replay
-  mode with a simulated fault.
-- **Shortcuts** (`./record`, `./present` and so on) to record and present
-  without typing long commands.
-
-## Limitations
-
-- Bench tests, with a single fan. A bench fan is not a compressor.
-- The faults in the evaluation are simulated in software; the physical ones only
-  show up in the live tests, with no numbers.
-- The fixed parameters of the detector (table in "Model") were tuned for the
-  bench fan and have not been tested on other machines.
-- The recordings cover minutes, not days. Drift does not become an alarm yet,
-  because separating weather from wear takes days of data and the operating
-  context (current, speed, ambient temperature).
-- At 400 Hz with I²C at 100 kHz, and with no count of FIFO overruns, it is not
-  yet possible to say that the 512 samples of a window are continuous.
-- The tachometer counts too many; the speed comes from the vibration spectrum.
-- MQTT was not implemented; collection depends on USB and the computer.
+To train on the board recordings, choose `board-bench-night`,
+`board-bench-hot-afternoon` and `board-place6`. The tape recordings and
+`board-front-obstructed` are faults: they are only for checking.
 
 ## Repository layout
 
-| Folder | Contents |
+The scripts live in `analysis/`. What runs the bench sits directly in it; the
+rest sits in subfolders, and `paths.py` lets a script of any subfolder import
+the others.
+
+| Where | What it holds |
 |---|---|
 | `firmware/` | ESP32 acquisition sketch |
-| `analysis/` | Detector, panel, recording, evaluation and figure |
-| `data/` | The three normal recorded sessions |
-| `results/` | Evaluation report and figure |
-| `assets/` | Images used in the article |
+| `analysis/` | The system: `trained_baseline.py` (the detector of the article, trained once, with the room climate), `train.py` and `check.py`, `record.py` and `monitor.py` (recording and live chart) and `csv_format.py` (columns of the board CSV) |
+| `analysis/evaluation/` | `compare_methods_real_faults.py` (Table I of the article: the three methods on the real faults and on the simulated slow fault) and `evaluate_real_faults.py` (the trained baseline on each board recording) |
+| `analysis/figures/` | `architecture_figure.py` (Fig. 1b), `real_faults_figure.py` (Fig. 2) and `five_places_figure.py` (loose fan against the board in five places) |
+| `analysis/ap1/` | The first-stage method: the adaptive detector (`adaptive.py`, used in the comparison of the article), the panel of `./present` and the two-baseline evaluation, with output in `results/ap1/` |
+| `data/` | The recordings: `board-*` with the fan on its board, `loose-*` with the fan loose on a table, `rep1` to `rep3` from the first stage |
+| `results/` | Evaluation reports and figures |
+| `assets/` | Photo and architecture of the article |
 | `paper/` | Article (`.tex`) and `refs.bib` |
 | `docs/` | Bench assembly and design decisions |
+
+## Architecture
+
+The ESP32 computes the features of each ~1.24 s window (its own FFT included)
+and sends one CSV line over USB. The detector runs on the computer, on the Mac
+or on Windows.
+
+![Architecture](assets/architecture-board.png)
+
+*The sensors and the ESP32 stay at the unit; the detector and the checker, on the
+computer.*
+
+## What the detector learns and what is fixed
+
+In training, it learns from each unit the normal of each measure (median and
+spread) in each climate, the threshold of the Isolation Forest and the range of
+the slow look. These values are fixed in `trained_baseline.py` and were tuned
+on the bench fan, with no proof on other machines: the normal of each window
+comes from the 600 training windows with the most similar climate (1 °C weighs
+as much as 5 points of humidity); the ruler flags the vibration strength more
+than 6 spreads above normal; the Isolation Forest only counts on two
+consecutive windows with some deviation of 3 or more; the slow look uses the
+3 min median, without the warm-up and without the base sway below 10 Hz; the
+first 5 minutes of every recording are the motor warming up and neither enter
+training nor raise alarms.
+
+## Customizations
+
+What the group built on top of the standard software (on the board, Arduino IDE
+with the ESP32 core and the Adafruit INA219 and DHT sensor libraries; on the
+computer, Python with numpy, pandas, scikit-learn, matplotlib and pyserial):
+
+- ADXL345 read straight from its registers, with the FIFO in stream mode, with
+  no library.
+- Radix-2 FFT of our own on the board, with a Hann window and corrected gain,
+  checked against known sines; real rate measured per window (414 Hz, not the
+  nominal 400).
+- Time by NTP, after the DS1302 measured time six times too fast.
+- Sensor failure warnings (`# ALARM`) and an INA219 restart every 2 s.
+- Current as the mean of the window, because the motor draws current in pulses,
+  and the DHT11 read in the same line, for the room climate.
+- Total measures, which do not change with the orientation of the sensor.
+- Trained-baseline detector with the climate (`trained_baseline.py`): the
+  scikit-learn Isolation Forest is only one of its three parts. Around it, the
+  group built the normal chosen by climate neighbors, the robust rise-only
+  ruler, the slow look against faults that grow slowly, the removal of the
+  warm-up and of the base sway, and the message with the measure that weighed
+  most.
+- Adaptive detector of the first stage, kept for the comparison.
+- Windows package: install, record, train and check with two clicks, with no
+  internet after installation, so that whoever installs the unit can train its
+  normal.
+- Evaluation with real faults: each fault appended after a healthy stretch, as
+  it appears in service, and compared with the adaptive detector and a fixed
+  limit.
+
+## What was left out, and why
+
+- The tachometer: on the same motor it read from 0 to 4900 rpm, depending on how
+  the wire sat. The speed comes from the dominant frequency of the vibration
+  (46 Hz).
+- The current in the alarm: it is still recorded, but raises no alarm. On the
+  same board and with no fault, it went from 154 to 142 mA from one day to the
+  next, from external factors such as the supply, and none of the three faults
+  moved it.
+
+## Limitations
+
+- A single bench fan, which is not a compressor; fixed parameters tuned on it.
+- Each fault was made only once; the climate ranged from 26 to 30 °C.
+- Recordings of hours, not months.
+- Without a count of FIFO overflows, the continuity of the 512 samples of each
+  window is not proven yet.
 
 ## Documents
 
