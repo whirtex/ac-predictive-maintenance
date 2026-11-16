@@ -1,0 +1,3 @@
+#!/bin/sh
+# Trains the model on the healthy recordings of data/: the Mac shortcut for analysis/train.py (on Windows, train.bat).
+cd "$(dirname "$0")" && exec .venv/bin/python analysis/train.py
