@@ -134,6 +134,27 @@ Tape the wires to the board about 3 cm from the sensor, always in the same
 position. A loose wire swings, and the swing enters the measurement as if it
 were machine vibration.
 
+## Step 4b: the room climate
+
+The DHT11 reads the air temperature and humidity of the room. They enter the
+model as an operating condition, not as a fault signal, so the bench works
+without it: the two climate columns just come out empty.
+
+With the 4-pin DHT11, grille facing you, the pins from left to right are `+`,
+data, not connected and `−`:
+
+| DHT11 pin | Goes to |
+|---|---|
+| `+` | 3.3 V of the ESP32 |
+| data | GPIO **13** of the ESP32 |
+| `−` | GND of the ESP32 |
+
+A 4.7 kΩ or 10 kΩ resistor goes between `+` and data. A 3-pin DHT11 module
+already has it on the board.
+
+**Confirmed when:** the last two columns of each line carry the temperature and
+the humidity, and the board does not print `# DHT11 not responding`.
+
 ## Step 5: mounting on the board
 
 The fan stands **upright**, glued to the wooden board with super glue. Screwing
@@ -150,57 +171,39 @@ once: it is not redone between one recording and the next.
 ## Recording, once everything is assembled
 
 Upload `firmware/esp32_acquisition/` to the board and close the Arduino IDE
-serial monitor. The rest is three shortcuts, run in the Terminal inside the
-repository root:
+serial monitor. The first time, set up Python: `python3 -m venv .venv` and then
+`.venv/bin/pip install -r analysis/requirements.txt`. On Windows, double-click
+`install.bat` instead.
+
+The shortcuts run in the repository root (on the Mac, `./name`; on Windows,
+`name.bat`):
 
 ```
-./record    records a session and opens the vibration and current chart
-./present   full panel of the adaptive detector, for the presentation
-./plot      live chart only: vibration and current, with no recording or comparing
+./record    records a session to data/<name>.csv and opens the live chart
+./train     trains the detector on the healthy recordings you choose
+./check     runs a recording through the trained detector and plots the alarms
+./plot      live chart only: vibration, current, speed and climate
+./present   the adaptive detector panel of the first stage (AP1)
 ```
 
-The first time, set up Python: `python3 -m venv .venv` and then
-`.venv/bin/pip install -r analysis/requirements.txt`.
-
-**For the first assessment (AP1), record only normal operation, in three
-sessions.** In each one:
+To set up a unit, record it working well, right after maintenance, for a few
+hours and in the climates it will face, then train on those recordings:
 
 1. Turn the fan on.
-2. Run `./record` and answer with the recording name. For the three evaluation
-   sessions, use `rep1`, `rep2` and `rep3`; to record in another place, use its
-   name (for example `table-b` or `floor`).
-3. Let it record. The chart opens by itself, and the terminal shows the time and
-   warns at 10 minutes.
+2. Run `./record` and answer with the recording name, for example the place
+   (`bench-night`). Enter alone records a test, `data/test-HHMMSS.csv`.
+   `./record` never writes over a recording that already exists.
+3. Let it record. The chart opens by itself, and the terminal shows the time.
 4. Press `Ctrl+C`. The chart closes with it.
-5. Turn the fan off for 1 minute before the next session.
+5. Run `./train`, choose the healthy recordings and wait for `model.pkl`.
 
-Do not touch the assembly between sessions. For a test that does not go into
-the evaluation, answer with just Enter instead of a name: the file becomes
-`data/test-HHMMSS.csv`. `./record` does not write over a recording that already
-exists; to redo one, delete its `data/<name>.csv` first.
+From then on, record the unit as before and run `./check` on each new
+recording: it says how much of it was out of the normal and which measure
+weighed most. The first 5 minutes of every recording are the motor warming up
+and raise no alarm. If the climate of a recording is new to the model, `./check`
+says so: record a few healthy minutes in that climate and train again.
 
-After the three, the detector evaluation runs with
-`.venv/bin/python analysis/evaluate_two_baselines.py`, and the numbers go to
-`results/`.
-
-At the presentation, run `./present`. The detector learns what is normal in
-place during the first 2 minutes, with the fan on and untouched, and then
-watches, relearning every minute. It does not matter which table it sits on or
-whether the fan is cold: it learns right there. The panel shows the state, each
-update of the normal, each alarm as a red dot, the current and the speed. The
-`M` key shows the Isolation Forest score in an extra chart. If the board fails,
-`./present backup` plays recorded session 3 with a simulated fault at 3
-minutes, marked as simulated on screen.
-
-If at least 80% of the readings stay in alert for 3 minutes, the panel asks the
-team to investigate the equipment. The detector does not learn from readings in
-alert and keeps the previous pattern. Gradual changes that it considers normal
-keep being absorbed automatically; that is a limitation to evaluate in the slow
-fault tests.
-
-The chart updates every 1.23 s: covering the inlet shows up well, and shaking
-the fan for 2 or 3 seconds shows up better than a quick tap. `Ctrl+C` in the
-terminal, or closing the window, ends the panel.
-
-Recording the faults (obstruction and imbalance) and measuring F1 is left for
-after the AP1.
+The faults of the article were made on purpose, one at a time, with the fan on
+its board: a piece of tape firmly on one blade (unbalance), the same tape
+loosely glued so that it flapped (loose part), and a wooden block 2 to 5 cm in
+front of the outlet (obstruction).
